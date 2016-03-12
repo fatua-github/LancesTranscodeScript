@@ -1,7 +1,7 @@
 ﻿param(
-    [string]$reduce,
+    [string]$reduce = $False,
     [string]$path,
-    [string]$codec
+    [string]$codec = "x264",
     )
 
 ################################################################
@@ -56,44 +56,84 @@ $a.PriorityClass = "Idle"
 $HomePath = Split-Path -parent $MyInvocation.MyCommand.Definition
 $CurrentFolder = pwd
 
-<#
-Old method of Arguments
-# Get command line option
-if ($args.count -gt 2) {
- echo "Too many command line arguments"
- echo "syntax: downloadtranscode.ps1 <-reduce 480:720> -path <path>"
- $host.Exit()
- }
 
-if ($args.count -eq 0) {
- echo "syntax: downloadtranscode.ps1 -reduce480 -reduce720 <path>"
- echo "No video path specified, please specify one"
- $host.Exit()
- }
-#>
+# Start Switch evaluation
+$switcherror = 0
 
-echo "reduce $reduce   Path $path"
-
-
+#Display current switches
+echo " " 
+echo " " 
+echo "-------------------------------------------------"
+echo "Switches from Command line and internal variables"
+echo "-------------------------------------------------"
+echo "-reduce $reduce"
+echo "-path $path"
+echo "-codec $codec"
+echo "-copylocal $copylocal"
 echo "Working path: $CurrentFolder"
 echo "Script location: $HomePath"
+echo " " 
+echo " " 
 
+echo "-----------------------------"
+echo "Testing the provided switches"
+echo "------------------------------"
+echo "Testing if $path Exists" 
 if (Test-Path $path) {
     echo "$path exists"
 }
 else {
  echo "$path does not exist, try again"
- exit
+ $switcherror = 1
 }
-
+echo " "
+echo "Testing chosen codec type"
 if ($codec -eq "x265" -or $codec -eq "x264"){
  echo "$codec chosen"
- # all good
  }
 else{
  echo "$codec not supported yet.   To use x264/aac, use -codec x264.  To use x265/aac, use -codec x265"
- exit
+ $switcherror = 1
 }
+
+echo " "    
+echo "Testing if reduce is being used"
+echo "$reduce $false"
+if ($reduce) {
+ if ($reduce -eq "480p" -or $reduce -eq "720p" -or $reduce -eq "1080p"){
+  echo "$reduce reduction chosen" 
+ }
+ else{
+   echo "$reduce not supported yet."
+   $switcherror = 1
+ }
+}
+else {
+ echo "-reduce not specified, no special reduction will be used"
+}
+
+echo " " 
+echo "Testing if copylocal is being used" 
+if ($copylocal){
+ echo "Copylocal is true"
+ }
+else{
+ echo "Copylocal not being used"
+}
+echo " "
+if ($switcherror -eq 1)  {
+ echo "There are errors in your switches" 
+ echo "Please use the following format:   downloadtranscoder.ps1 -path <path to source files> -codec [x264|x265] (-reduce [480p|720p|1080p]) (-copylocal)"
+ echo "   -path <path to source files>  for example -path c:\filestoencode"
+ echo "   -codec [x264|x265] -- optional with x264 as default -- choose your encoder"
+ echo "   -reduce [480p|720p|1080p]  -- optional switch to reduce if needed to the chosen size"
+ echo "   -copylocal -- optional if you wish to copy the video local before encoding.  will copy to a temp folder, and will copy back with finished encode to the source"
+}
+
+    
+read-host "Press enter"
+    
+### END OF SWITCH TESTING
     
 ### Variables
 ## Choose if you are using FFMPEG or Handbrake
