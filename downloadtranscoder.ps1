@@ -1,12 +1,13 @@
 ﻿param(
     [string]$reduce = $False,
-    [string]$path,
-    [string]$codec = "x264",
+    [string]$path = ".",
+    [string]$codec = "x264"
     )
 
-################################################################
-# Lance's Transcode Script to work with Couchpotato downloader #
-################################################################
+##########################################################
+#                Lances Transcode Script                 #
+# https://github.com/fatua-github/LancesTranscodeScript  #
+##########################################################
 
 <#  This script will transcode all the files in a directory based up a number of
 variables including codec types, frame size, video and audio bitrate, etc.
@@ -47,6 +48,7 @@ Nov 1, 2015 - Forked from transcode.ps1.
 Nov 24, 2015- changed to 2-pass instead of CRF 720p and 1080p, fixed int64 vs int on large file sizes, added m2ts.  added lock files to allow multiple computers to share a directory 
             - including invoking from command line.  Verifying that you are not running from folder
 Feb 27, 2016 - Included switches -x265 to force x265/aac/mp4 -- using medium preset based on http://www.techspot.com/article/1131-hevc-h256-enconding-playback/page7.html
+March 12, 2016 - rebuild switch funcationallty 
 #>
 
 #Set Priority to Low
@@ -78,7 +80,7 @@ echo " "
 echo "-----------------------------"
 echo "Testing the provided switches"
 echo "------------------------------"
-echo "Testing if $path Exists" 
+echo "Testing if $path exists" 
 if (Test-Path $path) {
     echo "$path exists"
 }
@@ -99,7 +101,8 @@ else{
 echo " "    
 echo "Testing if reduce is being used"
 echo "$reduce $false"
-if ($reduce) {
+
+if ($reduce -ne $false) {
  if ($reduce -eq "480p" -or $reduce -eq "720p" -or $reduce -eq "1080p"){
   echo "$reduce reduction chosen" 
  }
@@ -110,27 +113,19 @@ if ($reduce) {
 }
 else {
  echo "-reduce not specified, no special reduction will be used"
+ $reduce = "none"
 }
 
-echo " " 
-echo "Testing if copylocal is being used" 
-if ($copylocal){
- echo "Copylocal is true"
- }
-else{
- echo "Copylocal not being used"
-}
-echo " "
+
 if ($switcherror -eq 1)  {
  echo "There are errors in your switches" 
  echo "Please use the following format:   downloadtranscoder.ps1 -path <path to source files> -codec [x264|x265] (-reduce [480p|720p|1080p]) (-copylocal)"
  echo "   -path <path to source files>  for example -path c:\filestoencode"
  echo "   -codec [x264|x265] -- optional with x264 as default -- choose your encoder"
  echo "   -reduce [480p|720p|1080p]  -- optional switch to reduce if needed to the chosen size"
- echo "   -copylocal -- optional if you wish to copy the video local before encoding.  will copy to a temp folder, and will copy back with finished encode to the source"
 }
 
-    
+echo "pausing"
 read-host "Press enter"
     
 ### END OF SWITCH TESTING
