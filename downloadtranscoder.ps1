@@ -48,7 +48,7 @@ Nov 1, 2015 - Forked from transcode.ps1.
 Nov 24, 2015- changed to 2-pass instead of CRF 720p and 1080p, fixed int64 vs int on large file sizes, added m2ts.  added lock files to allow multiple computers to share a directory 
             - including invoking from command line.  Verifying that you are not running from folder
 Feb 27, 2016 - Included switches -x265 to force x265/aac/mp4 -- using medium preset based on http://www.techspot.com/article/1131-hevc-h256-enconding-playback/page7.html
-March 12, 2016 - rebuild switch funcationallty 
+March 12, 2016 - rebuild switch funcationallty, removed handbrakecli options (never fully implemented and ffmpeg is great)
 #>
 
 #Set Priority to Low
@@ -133,14 +133,12 @@ read-host "Press enter"
 ### Variables
 ## Choose if you are using FFMPEG or Handbrake
 $encoder="ffmpeg"
-#$encoder="HandbrakeCLI"
 $passes = 0
 
 ###Tool Directories
 $mediainfo = "$HomePath\tools\mediaInfo_cli\MediaInfo.exe"
 $mediainfotemplate =  "$HomePath\tools\mediaInfo_cli\Transcode.csv"
 $ffmpeg = "$HomePath\tools\ffmpeg\ffmpeg.exe"
-$HandbrakeCLI = "C:\Program Files\Handbrake\HandBrakeCLI.exe"
 $Mkvmerge = "C:\Program Files (x86)\MKVToolNix\mkvmerge.exe"
 
 #Base Encoder variables
@@ -171,7 +169,7 @@ $ffmpeg6ch = "-acodec aac -ac 6 -ab 192k  -strict -2"
 $ffmpegxch = "-acodec aac -ac 6 -ab 192k  -strict -2" #Greater than 6 ch audio downmixed to 6ch
 
 if ( $encoder -eq "ffmpeg" -and $codec -eq "x264"){
-    echo "Chosee ffmepg + x264"
+    echo "ffmepg + x264 chosen"
 	$vcopy = $ffmpegvcopy
 	$480p = $ffmpeg480p 
 	$720p = $ffmpeg720p
@@ -182,7 +180,7 @@ if ( $encoder -eq "ffmpeg" -and $codec -eq "x264"){
 	$xch = $ffmpegxch
 }
 elseif ( $encoder -eq "ffmpeg" -and $codec -eq "x265"){
-    echo "Chosee ffmepg + x265"
+    echo "ffmepg + x265 chosen"
 	$vcopy = $ffmpegvcopy
 	$480p = $ffmpegx265_480p 
 	$720p = $ffmpegx265_720p
@@ -191,16 +189,6 @@ elseif ( $encoder -eq "ffmpeg" -and $codec -eq "x265"){
 	$2ch = $ffmpeg2ch
 	$6ch = $ffmpeg6ch
 	$xch = $ffmpegxch
-}
-elseif ($encoder = "HandbrakeCli"){
-	$vcopy = $HandbrakeClivcopy
-	$480p = $HandbrakeCli480p 
-	$720p = $HandbrakeCli720p
-	$1080p = $HandbrakeCli1080p
-	$acopy = $HandbrakeCliacopy
-	$2ch = $HandbrakeCli2ch
-	$6ch = $HandbrakeCli6ch
-	$xch = $HandbrakeClixch
 }
 else {
 	echo "$(get-date -f yyyy-MM-dd) Choose an encoder"
@@ -420,13 +408,15 @@ foreach ($file in $files) {
 	echo $vres
 		
 		####### check Video ########
-		if ($reduce -eq "480")
-            { $videoopts = $480p + " -vf scale=-2:480" 
-              $passes = 1 }
-        elseif ($reduce -eq "720")
-            { $videoopts = $720p + " -vf scale=-2:720" 
-              $passes = 2 }
-        elseif ( [int]$MediainfoArray["VWidth"] -lt 721 -and [int]$MediainfoArray["VBitRate"] -gt 899 ) #480p - Transcode Video
+	##	if ($reduce -eq "480")
+    ##        { $videoopts = $480p + " -vf scale=-2:480" 
+    ##          $passes = 1 }
+    ##    elseif ($reduce -eq "720")
+    ##        { $videoopts = $720p + " -vf scale=-2:720" 
+    ##          $passes = 2 }
+
+    #If video codec is not the codec of the video, force transcode.    Also bitrate is different from video codec or not. 
+        if ( [int]$MediainfoArray["VWidth"] -lt 721 -and [int]$MediainfoArray["VBitRate"] -gt 899 ) #480p - Transcode Video
 			{ $videoopts = $480p
               $passes = 1 }
 		elseif ( [int]$MediainfoArray["VWidth"] -lt 721 -and [int]$MediainfoArray["VBitRate"] -le 899 ) #480p - Copy Video
@@ -440,7 +430,6 @@ foreach ($file in $files) {
               $passes = 1}
 		elseif ( [int]$MediainfoArray["VWidth"] -lt 1921 -and [int]$MediainfoArray["VBitRate"] -gt 2000 ) #1080p - Transcode video
 			{ $videoopts = $1080p
-              $videoopts = $1080p
               $passes = 2 }
 		elseif ( [int]$MediainfoArray["VWidth"] -lt 1921 -and [int]$MediainfoArray["VBitRate"] -le 2000 ) #1080p - Copy video
 	     	{ $videoopts = $vcopy
