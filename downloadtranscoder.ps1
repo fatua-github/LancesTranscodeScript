@@ -49,6 +49,7 @@ Nov 24, 2015- changed to 2-pass instead of CRF 720p and 1080p, fixed int64 vs in
             - including invoking from command line.  Verifying that you are not running from folder
 Feb 27, 2016 - Included switches -x265 to force x265/aac/mp4 -- using medium preset based on http://www.techspot.com/article/1131-hevc-h256-enconding-playback/page7.html
 March 12, 2016 - rebuild switch funcationallty, removed handbrakecli options (never fully implemented and ffmpeg is great)
+March 13, 2016 - Switched x265 480p to 2 pass, updated encode logic engine to handle multiple codecs
 #>
 
 #Set Priority to Low
@@ -158,9 +159,9 @@ $ffmpegvcopy = "-vcodec copy"
 #$ffmpeg1080p ="-vcodec libx264 -x264opts level=40:b-adapt=1:rc-lookahead=50:ref=5:bframes=16:me=umh:subq=5:deblock=-2,-1:direct=auto -b:v 2200k"  #Dont Reduce to 720p
 $ffmpeg480p = "-vcodec libx264 -profile:v high -level 41 -preset slow -crf 21"
 $ffmpeg720p = "-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 1503k"
-$ffmpeg1080p ="-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 2200k"  #Dont Reduce to 720p
-$ffmpegx265_480p = "-vcodec libx265 -preset medium -crf 23 -x265-params `"profile=high10`"" # need to test quality sometime
-$ffmpegx265_720p = "-vcodec libx265 -preset medium -b:v 1000k -x265-params `"profile=high10`""
+$ffmpeg1080p ="-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 2200k"
+$ffmpegx265_480p = "-vcodec libx265 -preset medium -b:v 250k -x265-params `"profile=high10`"" # need to test quality sometime
+$ffmpegx265_720p = "-vcodec libx265 -preset medium -b:v 900k -x265-params `"profile=high10`""
 $ffmpegx265_1080p ="-vcodec libx265 -preset medium -b:v 1300k -x265-params `"profile=high10`""
 
 $ffmpegacopy = "-acodec copy" 
@@ -368,10 +369,24 @@ foreach ($file in $files) {
 		Continue
 	}
 	
-	#####Main Processing Starting#####
-	#Old Way of doing it: $vcodec = $MediainfoOutput | Select-String -Pattern $SupportedVideoCodecs |  % { $_.Matches } | % { $_.Value } 
-	#Old Way of Doing it:$vcodec = $vcodec[1] #Note I am only looking for array entry one in case of multiple video codecs Detected (Eg, AVC and H264 in the same file but as a single track)
-	echo $vcodec
+
+########################
+#   Video Logic Engine #
+########################
+# Need to make a choice what to do with video.   Data points are: 
+#  - If $codec (user selected codec) is not equal to current video's codec - if not the same as current video, force reencode regardless of bitrate
+#  - If current video codec is considered a Bad codec, error out because this will not reencode properly
+#  - If the current video codec is unknown, error out because I cant be sure the quality of the output
+#  - If $Reduce is set to a resolution lower than the current video, force reencode to the set resolution
+#  - If the VBitRateMax is greater than the video bitrate, force reencode
+
+Echo " " 
+echo "Video Logic Engine Starting"
+echo "==========================="
+echo " " 
+echo "User Chosen Codec is $codec"
+echo "Current video Codec is $MediainfoArray["VFormat"]"
+
 	
 	### Lets find good video codecs
 	if ($GoodVideoCodecs -contains $MediainfoArray["VFormat"]) 
@@ -406,7 +421,29 @@ foreach ($file in $files) {
 		# Old method of doing it $vrestmp = $MediainfoOutput | Select-String -Pattern "Width   " -SimpleMatch # find Width
 		#$vres = $vrestmp -replace "\D" , "" #Replace all non-number characters with nothing (only # left)
 	echo $vres
-		
+
+# Maximum resolutions for source videos -- maybe switch this to an forumal based on source resolution * some factor
+if ($codec -eq "x264") {
+  $480pVBitRateMax = 899
+  $720pVBitRateMax = 1500
+  $1080pVBitRateMax = 2000 
+}
+elseif ($codec -eq "x265") {
+  $480pVBitRateMax = 500
+  $720pVBitRateMax = 1000
+  $1080pVBitRateMax = 1700 
+}
+
+
+
+#First if loop is video resolution
+# second verification is codec type
+# Third verification is codec bitrate
+
+
+
+
+
 		####### check Video ########
 	##	if ($reduce -eq "480")
     ##        { $videoopts = $480p + " -vf scale=-2:480" 
@@ -415,33 +452,38 @@ foreach ($file in $files) {
     ##        { $videoopts = $720p + " -vf scale=-2:720" 
     ##          $passes = 2 }
 
+
+
+
+
+
     #If video codec is not the codec of the video, force transcode.    Also bitrate is different from video codec or not. 
-        if ( [int]$MediainfoArray["VWidth"] -lt 721 -and [int]$MediainfoArray["VBitRate"] -gt 899 ) #480p - Transcode Video
-			{ $videoopts = $480p
-              $passes = 1 }
-		elseif ( [int]$MediainfoArray["VWidth"] -lt 721 -and [int]$MediainfoArray["VBitRate"] -le 899 ) #480p - Copy Video
-			{ $videoopts = $vcopy 
-              $passes = 1 }  
-		elseif ( [int]$MediainfoArray["VWidth"] -lt 1281 -and [int]$MediainfoArray["VBitRate"] -gt 2000 ) #720p - Transcode video
-			{ $videoopts = $720p
-              $passes = 2}
-		elseif ( [int]$MediainfoArray["VWidth"] -lt 1281 -and [int]$MediainfoArray["VBitRate"] -le 2000 ) #720p - Copy video
-			{ $videoopts = $vcopy 
-              $passes = 1}
-		elseif ( [int]$MediainfoArray["VWidth"] -lt 1921 -and [int]$MediainfoArray["VBitRate"] -gt 2000 ) #1080p - Transcode video
-			{ $videoopts = $1080p
-              $passes = 2 }
-		elseif ( [int]$MediainfoArray["VWidth"] -lt 1921 -and [int]$MediainfoArray["VBitRate"] -le 2000 ) #1080p - Copy video
-	     	{ $videoopts = $vcopy
-              $passes = 1 }
-		else ##### Video Resolution didnt Match -- Error #####
-		{
-			echo "Filename: $filename Good Video - vbitrate: $vbitrate vres: $vres  -- resolution doesnt fit  something has gone wrong"
-			CreateWorkingDir
-			Move-Item $filename $ErrorDir
-            Remove-Item "$SourceDir\$Basename.$hname.lock"
-			Continue
-		}
+#        if ( [int]$MediainfoArray["VWidth"] -lt 721 -and [int]$MediainfoArray["VBitRate"] -gt 899 ) #480p - Transcode Video
+#			{ $videoopts = $480p
+#              $passes = 1 }
+#		elseif ( [int]$MediainfoArray["VWidth"] -lt 721 -and [int]$MediainfoArray["VBitRate"] -le 899 ) #480p - Copy Video
+#			{ $videoopts = $vcopy 
+#              $passes = 1 }  
+#		elseif ( [int]$MediainfoArray["VWidth"] -lt 1281 -and [int]$MediainfoArray["VBitRate"] -gt 2000 ) #720p - Transcode video
+#			{ $videoopts = $720p
+#              $passes = 2}
+#		elseif ( [int]$MediainfoArray["VWidth"] -lt 1281 -and [int]$MediainfoArray["VBitRate"] -le 2000 ) #720p - Copy video
+#			{ $videoopts = $vcopy 
+#              $passes = 1}
+#		elseif ( [int]$MediainfoArray["VWidth"] -lt 1921 -and [int]$MediainfoArray["VBitRate"] -gt 2000 ) #1080p - Transcode video
+#			{ $videoopts = $1080p
+ #             $passes = 2 }
+#		elseif ( [int]$MediainfoArray["VWidth"] -lt 1921 -and [int]$MediainfoArray["VBitRate"] -le 2000 ) #1080p - Copy video
+#	     	{ $videoopts = $vcopy
+ #             $passes = 1 }
+#		else ##### Video Resolution didnt Match -- Error #####
+#		{
+#			echo "Filename: $filename Good Video - vbitrate: $vbitrate vres: $vres  -- resolution doesnt fit  something has gone wrong"
+#			CreateWorkingDir
+#			Move-Item $filename $ErrorDir
+ #           Remove-Item "$SourceDir\$Basename.$hname.lock"
+#			Continue
+#		}
 	}
 	elseif ($BadVideoCodecs -contains $MediainfoArray["VFormat"]) #Found a codec deemed bad
 	{
@@ -457,12 +499,6 @@ foreach ($file in $files) {
 		Move-Item $filename $UnknownDir
 		Continue
 	}
-	
-	#Lets do audio
-	#echo $SupportedAudioCodecs
-	#old way of doing it $acodec = $MediainfoOutput | Select-String -Pattern $SupportedAudioCodecs |  % { $_.Matches } | % { $_.Value } 
-	#$acodec = $vcodec[1] #Note I am only looking for array entry one in case of multiple video codecs Detected (Eg, AVC and H264 in the same file but as a single track)
-	#$acodec = $acodec -replace " " , "" #Remove required leading space to match properly
 	
 	#remember abit is audio bitrate from before
 	# Old way of doing it $achannelstmp = $MediainfoOutput | Select-String -Pattern "Channel(s)   " -SimpleMatch # find Width
