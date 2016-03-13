@@ -26,6 +26,7 @@ ToDo
  - Ability to detect audio language and drop other langagues
  - Ability to extract specific language subtitles and drop the others
  - adding ability to pull remote files local, transcode locally and push back
+ - Add a per-client log and a centralized log on the video log folder
 
 Usage:
 Note:  To run a powershell script you must perform the following:
