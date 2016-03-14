@@ -20,6 +20,12 @@ $RECYCLE.BIN/
 # Tools folder
 Tools/
 
+#Video Files and ffmpeg temp files
+*.mp4
+*.mkv
+ffmpeg2pass*
+*.lock
+
 # =========================
 # Operating System Files
 # =========================
