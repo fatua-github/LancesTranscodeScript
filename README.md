@@ -15,6 +15,18 @@ Eg.
   Video 1:  1080p video bitrate = 5000 and audio is 2ch aac at 64k
     - will transcode video and copy audio
 
+Setup
+-----
+1) In your script folder make a folder named "Tools"
+2) Download ffmpeg from zeranoe and place ffmpeg.exe into Tools\ffmpeg  -->https://ffmpeg.zeranoe.com/builds/
+3) Download mediainfo_cli and place into Tools\mediainfo_cli --> https://mediaarea.net/en/MediaInfo/Download/Windows  (CLI Version)
+4) Create a new file in Tools\mediainfo_cli called Transcode.csv and add the following lines:
+
+General;VideoCount=%VideoCount%\r\nAudioCount=%AudioCount%\r\nTextCount=%TextCount%\r\nFileSize=%FileSize%\r\nDuration=%Duration%\r\n
+Video;VFormat=%Format%\r\nVCodecID=%CodecID%\r\nVBitRate=%BitRate%\r\nVWidth=%Width%\r\n
+Audio;AFormat=%Format%\r\nACodecID=%CodecID%\r\nABitRate=%BitRate%\r\nAChannels=%Channels%\r\nALangugage=%Language%\r\n
+Text;TID=%ID%\r\nTCodecID=%CodecID%\r\nTLanguage=%Language%\r\n
+
 ToDo
 ----
  - Make the script less rigid
