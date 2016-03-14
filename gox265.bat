@@ -1,1 +1,1 @@
-powershell .\downloadtranscoder.ps1 -path Z:\Downloads\couchpotato\totranscode -codec x265
+powershell .\downloadtranscoder.ps1 -path Z:\Downloads\couchpotato\totranscode -codec hevc
