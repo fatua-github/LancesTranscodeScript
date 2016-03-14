@@ -653,7 +653,7 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
          }
         elseif ($passes -eq 2) {
         	$ffmpegcommand = "-y -i `"$filename`" -pass 1 $videoopts $audioopts -f MP4 NUL"
-            echo "$(get-date) - Starting Pass 2 of 2"	
+            echo "$(get-date) - Starting Pass 1 of 2"	
             echo "$(get-date) - FFMPEG Command: $ffmpeg $ffmpegcommand"
             Start-Process -FilePath "$ffmpeg" -ArgumentList "$ffmpegcommand" -Wait -PassThru
 	        if ($LASTEXITCODE -ne 0)  # IF FFMPEG had an error, dont continue with pass 2
@@ -665,7 +665,7 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
             #PASS 2
 
             $ffmpegcommand = "-i `"$filename`" -pass 2 $videoopts $audioopts `"$SourceDir\$basename$modifier.mp4`""
-            echo "$(get-date) - Starting Pass 1 of 2"	
+            echo "$(get-date) - Starting Pass 2 of 2"	
 	        echo "$(get-date) - FFMPEG Command: $ffmpeg $ffmpegcommand"
             Start-Process -FilePath "$ffmpeg" -ArgumentList "$ffmpegcommand" -Wait -PassThru
             movefiles($LastExitCode)
