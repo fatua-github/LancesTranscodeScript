@@ -102,18 +102,19 @@ else{
 echo " "    
 echo "$(get-date) - Testing if reduce is being used"
 
+#All scale options use -2 instead of -1 to ensure final resolution is divisable by 2 as required by x264 and x265
 if ($reduce -ne $false) {
  if ($reduce -eq "480p") {
   echo "$(get-date) - $reduce reduction chosen" 
-  $ffmpegreduce = "-vf scale=-1:720"
+  $ffmpegreduce = "-vf scale=720:-2"
  }
  elseif ($reduce -eq "720p") {
   echo "$(get-date) - $reduce reduction chosen" 
-  $ffmpegreduce = "-vf scale=-1:1280"
+  $ffmpegreduce = "-vf scale=1280:-2"
  }
  elseif ($reduce -eq "1080p") {
   echo "$(get-date) - $reduce reduction chosen" 
-  $ffmpegreduce = "-vf scale=-1:1920"
+  $ffmpegreduce = "-vf scale=1920:-2"
  }
  else{
    echo "$(get-date) - $reduce not supported yet."
@@ -180,15 +181,12 @@ if ($acodec -eq "AAC") {
 
 #Encoder Strings
 $ffmpegvcopy = "-vcodec copy"
-#$ffmpeg480p = "-vcodec libx264 -x264opts level=40:b-adapt=1:rc-lookahead=50:ref=5:bframes=16:me=umh:subq=5:deblock=-2,-1:direct=auto -crf 21"
-#$ffmpeg720p = "-vcodec libx264 -x264opts level=40:b-adapt=1:rc-lookahead=50:ref=5:bframes=16:me=umh:subq=5:deblock=-2,-1:direct=auto -b:v 1503k"
-#$ffmpeg1080p ="-vcodec libx264 -x264opts level=40:b-adapt=1:rc-lookahead=50:ref=5:bframes=16:me=umh:subq=5:deblock=-2,-1:direct=auto -b:v 2200k"  #Dont Reduce to 720p
-$ffmpeg480p = "-vcodec libx264 -profile:v high -level 41 -preset slow -crf 21"
-$ffmpeg720p = "-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 1503k"
-$ffmpeg1080p ="-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 2200k"
-$ffmpegHEVC_480p = "-vcodec libx265 -preset medium -b:v 250k -x265-params `"profile=high10`"" # need to test quality sometime
-$ffmpegHEVC_720p = "-vcodec libx265 -preset medium -b:v 900k -x265-params `"profile=high10`""
-$ffmpegHEVC_1080p ="-vcodec libx265 -preset medium -b:v 1300k -x265-params `"profile=high10`""
+$ffmpeg480p = "-vcodec libx264 -profile:v high -level 41 -preset slow -crf 21" # unchanged numbers from 2012
+$ffmpeg720p = "-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 1503k" # unchanged numbers from 2012
+$ffmpeg1080p ="-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 2200k" # unchanged numbers from 2012
+$ffmpegHEVC_480p = "-vcodec libx265 -preset medium -b:v 303k -x265-params `"profile=high10`"" # .9 bits per pixel
+$ffmpegHEVC_720p = "-vcodec libx265 -preset medium -b:v 720k -x265-params `"profile=high10`""    #.8 bits per pixel
+$ffmpegHEVC_1080p ="-vcodec libx265 -preset medium -b:v 1300k -x265-params `"profile=high10`""   #.64 bits per pixel
 
 $ffmpegacopy = "-acodec copy" 
 $ffmpeg2ch = "-acodec aac -ac 2 -ab 64k -strict -2"
@@ -655,7 +653,7 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
          }
         elseif ($passes -eq 2) {
         	$ffmpegcommand = "-y -i `"$filename`" -pass 1 $videoopts $audioopts -f MP4 NUL"
-            echo "$(get-date) - Starting Pass 1 of 2"	
+            echo "$(get-date) - Starting Pass 2 of 2"	
             echo "$(get-date) - FFMPEG Command: $ffmpeg $ffmpegcommand"
             Start-Process -FilePath "$ffmpeg" -ArgumentList "$ffmpegcommand" -Wait -PassThru
 	        if ($LASTEXITCODE -ne 0)  # IF FFMPEG had an error, dont continue with pass 2

@@ -20,6 +20,9 @@ $RECYCLE.BIN/
 # Tools folder
 Tools/
 
+#test videos folder
+testvideos/
+
 #Video Files and ffmpeg temp files
 *.mp4
 *.mkv
