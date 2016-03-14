@@ -1,12 +1,13 @@
 ﻿param(
-    [string]$reduce,
-    [string]$path,
-    [string]$codec
+    [string]$reduce = $False,
+    [string]$path = ".",
+    [string]$codec = "AVC"
     )
 
-################################################################
-# Lance's Transcode Script to work with Couchpotato downloader #
-################################################################
+##########################################################
+#                Lances Transcode Script                 #
+# https://github.com/fatua-github/LancesTranscodeScript  #
+##########################################################
 
 <#  This script will transcode all the files in a directory based up a number of
 variables including codec types, frame size, video and audio bitrate, etc.
@@ -47,6 +48,8 @@ Nov 1, 2015 - Forked from transcode.ps1.
 Nov 24, 2015- changed to 2-pass instead of CRF 720p and 1080p, fixed int64 vs int on large file sizes, added m2ts.  added lock files to allow multiple computers to share a directory 
             - including invoking from command line.  Verifying that you are not running from folder
 Feb 27, 2016 - Included switches -x265 to force x265/aac/mp4 -- using medium preset based on http://www.techspot.com/article/1131-hevc-h256-enconding-playback/page7.html
+March 12, 2016 - rebuild switch funcationallty, removed handbrakecli options (never fully implemented and ffmpeg is great)
+March 13, 2016 - Switched x265 480p to 2 pass, updated encode logic engine to handle multiple codecs
 #>
 
 #Set Priority to Low
@@ -56,56 +59,95 @@ $a.PriorityClass = "Idle"
 $HomePath = Split-Path -parent $MyInvocation.MyCommand.Definition
 $CurrentFolder = pwd
 
-<#
-Old method of Arguments
-# Get command line option
-if ($args.count -gt 2) {
- echo "Too many command line arguments"
- echo "syntax: downloadtranscode.ps1 <-reduce 480:720> -path <path>"
- $host.Exit()
- }
 
-if ($args.count -eq 0) {
- echo "syntax: downloadtranscode.ps1 -reduce480 -reduce720 <path>"
- echo "No video path specified, please specify one"
- $host.Exit()
- }
-#>
+# Start Switch evaluation
+$switcherror = 0
 
-echo "reduce $reduce   Path $path"
+#Display current switches
+echo "$(get-date) - " 
+echo "$(get-date) - " 
+echo "$(get-date) - -------------------------------------------------"
+echo "$(get-date) - Switches from Command line and internal variables"
+echo "$(get-date) - -------------------------------------------------"
+echo "$(get-date) - -reduce $reduce"
+echo "$(get-date) - -path $path"
+echo "$(get-date) - -codec $codec"
+echo "$(get-date) - -copylocal $copylocal"
+echo "$(get-date) - Working path: $CurrentFolder"
+echo "$(get-date) - Script location: $HomePath"
+echo " " 
+echo " " 
 
-
-echo "Working path: $CurrentFolder"
-echo "Script location: $HomePath"
-
+echo "$(get-date) - -----------------------------"
+echo "$(get-date) - Testing the provided switches"
+echo "$(get-date) - ------------------------------"
+echo "$(get-date) - Testing if $path exists" 
 if (Test-Path $path) {
-    echo "$path exists"
+    echo "$(get-date) - The path $path exists"
 }
 else {
- echo "$path does not exist, try again"
- exit
+ echo "$(get-date) - The path $path does not exist, try again"
+ $switcherror = 1
 }
-
-if ($codec -eq "x265" -or $codec -eq "x264"){
- echo "$codec chosen"
- # all good
+echo " "
+echo "$(get-date) - Testing chosen codec type"
+if ($codec -eq "HEVC" -or $codec -eq "AVC"){
+ echo "$(get-date) - $codec chosen"
  }
 else{
- echo "$codec not supported yet.   To use x264/aac, use -codec x264.  To use x265/aac, use -codec x265"
- exit
+ echo "$(get-date) - The codec $codec is not supported yet.   To use AVC/aac (H.264), use -codec AVC.  To use HEVC/aac (H.265), use -codec HEVC"
+ $switcherror = 1
 }
+
+echo " "    
+echo "$(get-date) - Testing if reduce is being used"
+
+#All scale options use -2 instead of -1 to ensure final resolution is divisable by 2 as required by x264 and x265
+if ($reduce -ne $false) {
+ if ($reduce -eq "480p") {
+  echo "$(get-date) - $reduce reduction chosen" 
+  $ffmpegreduce = "-vf scale=720:-2"
+ }
+ elseif ($reduce -eq "720p") {
+  echo "$(get-date) - $reduce reduction chosen" 
+  $ffmpegreduce = "-vf scale=1280:-2"
+ }
+ elseif ($reduce -eq "1080p") {
+  echo "$(get-date) - $reduce reduction chosen" 
+  $ffmpegreduce = "-vf scale=1920:-2"
+ }
+ else{
+   echo "$(get-date) - $reduce not supported yet."
+   $switcherror = 1
+ }
+}
+else {
+ echo "$(get-date) - -reduce not specified, no special reduction will be used"
+ $reduce = "none"
+ $ffmpegreduce = ""
+}
+
+
+if ($switcherror -eq 1)  {
+ echo "$(get-date) - There are errors in your switches" 
+ echo "$(get-date) - Please use the following format:   downloadtranscoder.ps1 -path <path to source files> -codec [AVC|HEVC] (-reduce [480p|720p|1080p]) (-copylocal)"
+ echo "$(get-date) -    -path <path to source files>  for example -path c:\filestoencode"
+ echo "$(get-date) -    -codec [AVC|HEVC] -- optional with AVC as default -- choose your encoder"
+ echo "$(get-date) -    -reduce [480p|720p|1080p]  -- optional switch to reduce if needed to the chosen size"
+}
+
+    
+### END OF SWITCH TESTING
     
 ### Variables
 ## Choose if you are using FFMPEG or Handbrake
 $encoder="ffmpeg"
-#$encoder="HandbrakeCLI"
 $passes = 0
 
 ###Tool Directories
 $mediainfo = "$HomePath\tools\mediaInfo_cli\MediaInfo.exe"
 $mediainfotemplate =  "$HomePath\tools\mediaInfo_cli\Transcode.csv"
 $ffmpeg = "$HomePath\tools\ffmpeg\ffmpeg.exe"
-$HandbrakeCLI = "C:\Program Files\Handbrake\HandBrakeCLI.exe"
 $Mkvmerge = "C:\Program Files (x86)\MKVToolNix\mkvmerge.exe"
 
 #Base Encoder variables
@@ -118,57 +160,71 @@ $GoodAudio = "AAC"
 $TranscodeAudio = "AC-3","MPEG Audio","WMA","DTS","PCM"
 $SubtitlesExtensions = ".idx",".sub",".srt",".ass",".smi"
 
+# Maximum resolutions for source videos -- maybe switch this to an formula based on source resolution * some factor
+if ($codec -eq "AVC") {  #Mediainfo outputs Kbytes*1000 as bytes, not 1024
+  $480pVBitRateMax = 899*1000  
+  $720pVBitRateMax = 1500*1000
+  $1080pVBitRateMax = 2000*1000
+}
+elseif ($codec -eq "HEVC") {
+  $480pVBitRateMax = 500*1000
+  $720pVBitRateMax = 1000*1000
+  $1080pVBitRateMax = 1700*1000 
+}
+
+#Hardcode Audio codec to AAC, will update later with webm/VP9/OGG
+$acodec = "AAC"
+if ($acodec -eq "AAC") {
+  $2chABitRateMax = 64*1000
+  $6chABitRateMax = 256*1000
+}
+
 #Encoder Strings
 $ffmpegvcopy = "-vcodec copy"
-#$ffmpeg480p = "-vcodec libx264 -x264opts level=40:b-adapt=1:rc-lookahead=50:ref=5:bframes=16:me=umh:subq=5:deblock=-2,-1:direct=auto -crf 21"
-#$ffmpeg720p = "-vcodec libx264 -x264opts level=40:b-adapt=1:rc-lookahead=50:ref=5:bframes=16:me=umh:subq=5:deblock=-2,-1:direct=auto -b:v 1503k"
-#$ffmpeg1080p ="-vcodec libx264 -x264opts level=40:b-adapt=1:rc-lookahead=50:ref=5:bframes=16:me=umh:subq=5:deblock=-2,-1:direct=auto -b:v 2200k"  #Dont Reduce to 720p
-$ffmpeg480p = "-vcodec libx264 -profile:v high -level 41 -preset slow -crf 21"
-$ffmpeg720p = "-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 1503k"
-$ffmpeg1080p ="-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 2200k"  #Dont Reduce to 720p
-$ffmpegx265_480p = "-vcodec libx265 -preset medium -crf 23 -x265-params `"profile=high10`"" # need to test quality sometime
-$ffmpegx265_720p = "-vcodec libx265 -preset medium -b:v 1000k -x265-params `"profile=high10`""
-$ffmpegx265_1080p ="-vcodec libx265 -preset medium -b:v 1300k -x265-params `"profile=high10`""
+$ffmpeg480p = "-vcodec libx264 -profile:v high -level 41 -preset slow -crf 21" # unchanged numbers from 2012
+$ffmpeg720p = "-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 1503k" # unchanged numbers from 2012
+$ffmpeg1080p ="-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 2200k" # unchanged numbers from 2012
+$ffmpegHEVC_480p = "-vcodec libx265 -preset medium -b:v 303k -x265-params `"profile=high10`"" # .9 bits per pixel
+$ffmpegHEVC_720p = "-vcodec libx265 -preset medium -b:v 720k -x265-params `"profile=high10`""    #.8 bits per pixel
+$ffmpegHEVC_1080p ="-vcodec libx265 -preset medium -b:v 1300k -x265-params `"profile=high10`""   #.64 bits per pixel
 
 $ffmpegacopy = "-acodec copy" 
 $ffmpeg2ch = "-acodec aac -ac 2 -ab 64k -strict -2"
 $ffmpeg6ch = "-acodec aac -ac 6 -ab 192k  -strict -2"
 $ffmpegxch = "-acodec aac -ac 6 -ab 192k  -strict -2" #Greater than 6 ch audio downmixed to 6ch
 
-if ( $encoder -eq "ffmpeg" -and $codec -eq "x264"){
-    echo "Chosee ffmepg + x264"
+if ( $encoder -eq "ffmpeg" -and $codec -eq "AVC"){
+    #echo "ffmepg + AVC chosen"
 	$vcopy = $ffmpegvcopy
+    $vcopypasses = 1
 	$480p = $ffmpeg480p 
+    $480ppasses = 1
 	$720p = $ffmpeg720p
+    $720ppasses = 2
 	$1080p = $ffmpeg1080p
+    $1080ppasses = 2
 	$acopy = $ffmpegacopy
 	$2ch = $ffmpeg2ch
 	$6ch = $ffmpeg6ch
 	$xch = $ffmpegxch
 }
-elseif ( $encoder -eq "ffmpeg" -and $codec -eq "x265"){
-    echo "Chosee ffmepg + x265"
+elseif ( $encoder -eq "ffmpeg" -and $codec -eq "HEVC"){
+    #echo "ffmepg + HEVC chosen"
 	$vcopy = $ffmpegvcopy
-	$480p = $ffmpegx265_480p 
-	$720p = $ffmpegx265_720p
-	$1080p = $ffmpegx265_1080p
+    $vcopypasses = 2
+	$480p = $ffmpegHEVC_480p
+    $480ppasses = 2
+	$720p = $ffmpegHEVC_720p
+    $720ppasses = 2
+	$1080p = $ffmpegHEVC_1080p
+    $1080ppasses = 2
 	$acopy = $ffmpegacopy
 	$2ch = $ffmpeg2ch
 	$6ch = $ffmpeg6ch
 	$xch = $ffmpegxch
-}
-elseif ($encoder = "HandbrakeCli"){
-	$vcopy = $HandbrakeClivcopy
-	$480p = $HandbrakeCli480p 
-	$720p = $HandbrakeCli720p
-	$1080p = $HandbrakeCli1080p
-	$acopy = $HandbrakeCliacopy
-	$2ch = $HandbrakeCli2ch
-	$6ch = $HandbrakeCli6ch
-	$xch = $HandbrakeClixch
 }
 else {
-	echo "$(get-date -f yyyy-MM-dd) Choose an encoder"
+	echo "$(get-date) Choose an encoder"
 	exit
 }
 
@@ -185,15 +241,10 @@ $Modifier = ""
 $MediainfoOutput = ""
 $vcodec = ""
 $NumAudioTracks = ""
-$vres = ""
-$vrestmp = ""
+#$vres = ""
+#$vrestmp = ""
 $bittmp = ""
 $bit = ""
-$vbit = ""
-$abit = ""
-$acodec = ""
-$achannels = ""
-$achannelstmp = ""
 $ffmpegcommand = ""
 
 # Get list of files in $SourceDir
@@ -258,11 +309,18 @@ Function CreateWorkingDir ()
 
 #START
 foreach ($file in $files) {
+    write-host " " 
     $hname = hostname
 	$filename = "$SourceDir\$file"
 	$basename = $file.BaseName
 	$extension = $file.Extension
 	
+    #Check if extension is a known one
+    if (($GoodExtensions -notcontains $extension) -and ($SubtitlesExtensions -notcontains $extension)) {
+      echo "$(get-date) - $filename has unknown exension -- Skipping."
+      Continue
+    }
+
 	# as time passes from first creation of $files, first test if file still exists
     if (!(Test-Path $filename))
      { continue }
@@ -270,21 +328,21 @@ foreach ($file in $files) {
     #check if lockfile
 	if ("$extension" -eq ".lock")
 	{
-        echo "$(get-date -f yyyy-MM-dd) Lockfile Found: $extension, skipping"
+        echo "$(get-date) Lockfile Found: $extension, skipping"
         Continue
     }
 
     #Check if is a directory, if so skip
     if (Test-Path -Path $filename -PathType Container )
 	{
-		echo "$(get-date -f yyyy-MM-dd) $filename Is a directory, skipping"
+		echo "$(get-date) $filename Is a directory, skipping"
 		Continue
 	}
 	
     #Check if file is Subtitle.
 	if ($SubtitlesExtensions -contains "$extension")
 	{
-		echo "$(get-date -f yyyy-MM-dd) Subititle file: $filename"
+		echo "$(get-date) Subititle file: $filename"
 		CreateWorkingDir
 		Move-Item $filename $CompleteDir
         Continue
@@ -293,13 +351,13 @@ foreach ($file in $files) {
 	#Check if file is of supported container type.
 	if (!($GoodExtensions -contains "$extension"))
 	{
-        echo "$(get-date -f yyyy-MM-dd) Unknown Extension: $extension"
+        echo "$(get-date) Unknown Extension: $extension"
 		CreateWorkingDir
 		Move-Item $filename $UnknownDir
         Continue
     }
 
-	echo "$(get-date -f yyyy-MM-dd) Movie File found: $filename.   Checking for lock file"
+	echo "$(get-date) - Movie File found: $filename.   Checking for lock file"
     if (Test-Path "$SourceDir\$Basename*.lock")
     {
 #        echo "Found lockfile, skipping"
@@ -330,12 +388,47 @@ foreach ($file in $files) {
    	 }
   	}	
   #$MediainfoArray
- #Note current array entries are: $MediainfoArray["VBitRate"]Name ABitRate AChannels FileSize VCodecID AudioCount ACodecID VWidth TextCount AFormat VideoCount Duration VFormat
-   
-	#Check if file has multiple audio tracks (Note, track 1 will always be video, so 2 tracks = 1 video + 1 audio.  
-	# greater than 2 tracks means manual intervention is required
-	#Old Method $NumAudioTracks = $MediainfoOutput | Select-String -Pattern "Format/Info" | Measure-Object -Line
-	#echo "Number of audio Tracks:" $NumAudioTracks.Lines
+
+  #Example of the hashtable produced by the MediaInfoTemplate
+#Name                           Value                                                                                                                                                                                                
+#----                           -----                                                                                                                                                                                                
+#VBitRate                       8452000                                                                                                                                                                                              
+#ABitRate                       107608                                                                                                                                                                                               
+#AChannels                      6                                                                                                                                                                                                    
+#FileSize                       147399359                                                                                                                                                                                            
+#VCodecID                       avc1                                                                                                                                                                                                 
+#AudioCount                     1                                                                                                                                                                                                    
+#ACodecID                       40                                                                                                                                                                                                   
+#VWidth                         1920                                                                                                                                                                                                 
+#TextCount                                                                                                                                                                                                                           
+#AFormat                        AAC                                                                                                                                                                                                  
+#ALangugage                                                                                                                                                                                                                          
+#VideoCount                     1                                                                                                                                                                                                    
+#Duration                       137252                                                                                                                                                                                               
+#VFormat                        AVC     
+
+########################
+#   Video Logic Engine #
+########################
+# Need to make a choice what to do with video.   Data points are: 
+#  Test 1 - If current video codec is considered a Bad codec, error out because this will not reencode properly
+#  If $codec (user selected codec) is not equal to current video's codec - if not the same as current video, force reencode regardless of bitrate
+#  - If the current video codec is unknown, error out because I cant be sure the quality of the output
+#  - If $Reduce is set to a resolution lower than the current video, force reencode to the set resolution
+#  - If the VBitRateMax is greater than the video bitrate, force reencode
+echo "$(get-date) - ==========================="
+echo "$(get-date) - Video Logic Engine Starting"
+echo "$(get-date) - ==========================="
+echo "$(get-date) - User Chosen Codec is $codec"
+echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
+
+
+#Testing Number of audio tracks
+
+#Note, track 1 will always be video, so 2 tracks = 1 video + 1 audio.  
+  # greater than 2 tracks means manual intervention is required
+  #Old Method $NumAudioTracks = $MediainfoOutput | Select-String -Pattern "Format/Info" | Measure-Object -Line
+  #echo "Number of audio Tracks:" $NumAudioTracks.Lines
 	if ( $MediainfoArray["AudioCount"] -ge 2 )
 	{ #Manual handling Required
 	  	#Check/Make working folders
@@ -344,127 +437,183 @@ foreach ($file in $files) {
         Remove-Item "$SourceDir\$Basename.$hname.lock"
 		Continue
 	}
-	
-	#####Main Processing Starting#####
-	#Old Way of doing it: $vcodec = $MediainfoOutput | Select-String -Pattern $SupportedVideoCodecs |  % { $_.Matches } | % { $_.Value } 
-	#Old Way of Doing it:$vcodec = $vcodec[1] #Note I am only looking for array entry one in case of multiple video codecs Detected (Eg, AVC and H264 in the same file but as a single track)
-	echo $vcodec
-	
-	### Lets find good video codecs
-	if ($GoodVideoCodecs -contains $MediainfoArray["VFormat"]) 
+#Testing source video codec
+	if ($GoodVideoCodecs -contains $MediainfoArray['VFormat']) 
 	{
-		echo Found good
-		#Get Video (and audio) Bitrate
-		#Old Way of Doing Things $bittmp = $MediainfoOutput | Select-String -Pattern "Bit rate   " -CaseSensitive -SimpleMatch # find Width
-		# $bit = $bittmp -replace "\D" , "" #Replace all non-number characters with nothing (only # left)
-		# $vbit = $bit[0]
-		# $abit = $bit[1]
+
+        write-host "$(get-date) - $($MediainfoArray.VFormat) is an acceptable source codec"
 		
-		#If no bitrate is shown, estimate and set a value
+		#If no bitrate is shown, estimate and set a value, some source codecs dont supply a bit rate.
 		if (!$MediainfoArray["VBitRate"])
 		{
-			echo "no VBitRate"
+
 			[int64]$AvgBitRate = ([int64]$MediainfoArray["FileSize"]*8)/$MediainfoArray["Duration"]
-			#echo "Total Average Bitrate = $AvgBitRate"
-			#acceptable audio bitrate = 64Kbit for 2ch and 256kBit for 6ch
+			
    
 			if ($MediainfoArray["AChannels"] -eq 2) { $tmp = 65 }
 			else { $tmp = 257 }
-			
 			$estVideoBitrate = $AvgBitRate - $tmp
 			
-			#echo $estVideoBitrate
-			$MediainfoArray["VBitRate"] = $estVideoBitrate
-			$MediainfoArray["ABitrate"] = $tmp
-			
+			#echo $estVideoBitrate (with conversation from Kb to b, where 1000 = 1k as per mediainfo)
+			$MediainfoArray["VBitRate"] = $estVideoBitrate*1000
+			$MediainfoArray["ABitrate"] = $tmp*1000
+            write-host "$(get-date) - Source codec doesnt supply a Video Bit Rate - using calculated average of $($MediainfoArray.VBitRate)"
+            echo "$(get-date) -                              Audio Bit Rate - using calculated average of $($MediainfoArray.ABitRate)"			
 		}
-
-		#Get Video Resolution
-		# Old method of doing it $vrestmp = $MediainfoOutput | Select-String -Pattern "Width   " -SimpleMatch # find Width
-		#$vres = $vrestmp -replace "\D" , "" #Replace all non-number characters with nothing (only # left)
-	echo $vres
-		
-		####### check Video ########
-		if ($reduce -eq "480")
-            { $videoopts = $480p + " -vf scale=-2:480" 
-              $passes = 1 }
-        elseif ($reduce -eq "720")
-            { $videoopts = $720p + " -vf scale=-2:720" 
-              $passes = 2 }
-        elseif ( [int]$MediainfoArray["VWidth"] -lt 721 -and [int]$MediainfoArray["VBitRate"] -gt 899 ) #480p - Transcode Video
-			{ $videoopts = $480p
-              $passes = 1 }
-		elseif ( [int]$MediainfoArray["VWidth"] -lt 721 -and [int]$MediainfoArray["VBitRate"] -le 899 ) #480p - Copy Video
-			{ $videoopts = $vcopy 
-              $passes = 1 }  
-		elseif ( [int]$MediainfoArray["VWidth"] -lt 1281 -and [int]$MediainfoArray["VBitRate"] -gt 2000 ) #720p - Transcode video
-			{ $videoopts = $720p
-              $passes = 2}
-		elseif ( [int]$MediainfoArray["VWidth"] -lt 1281 -and [int]$MediainfoArray["VBitRate"] -le 2000 ) #720p - Copy video
-			{ $videoopts = $vcopy 
-              $passes = 1}
-		elseif ( [int]$MediainfoArray["VWidth"] -lt 1921 -and [int]$MediainfoArray["VBitRate"] -gt 2000 ) #1080p - Transcode video
-			{ $videoopts = $1080p
-              $videoopts = $1080p
-              $passes = 2 }
-		elseif ( [int]$MediainfoArray["VWidth"] -lt 1921 -and [int]$MediainfoArray["VBitRate"] -le 2000 ) #1080p - Copy video
-	     	{ $videoopts = $vcopy
-              $passes = 1 }
-		else ##### Video Resolution didnt Match -- Error #####
-		{
-			echo "Filename: $filename Good Video - vbitrate: $vbitrate vres: $vres  -- resolution doesnt fit  something has gone wrong"
-			CreateWorkingDir
-			Move-Item $filename $ErrorDir
-            Remove-Item "$SourceDir\$Basename.$hname.lock"
-			Continue
-		}
+        else {
+            write-host "$(get-date) - Source codec Video Bit Rate - $($MediainfoArray.VBitRate)"
+            write-host "$(get-date) -              Audio Bit Rate - $($MediainfoArray.ABitRate)"		
+        }
 	}
 	elseif ($BadVideoCodecs -contains $MediainfoArray["VFormat"]) #Found a codec deemed bad
 	{
-		echo "$(get-date -f yyyy-MM-dd) Unknown video Codec type found in video: $MediainfoArray["VFormat"]"
+		echo "$(get-date) - $($MediainfoArray.VFormat) is considered an unworkable source video codec"
+        echo "$(get-date) - $filename will be moved to $BadDir and the next video will be processed"
 		CreateWorkingDir
 		Move-Item $filename $BadDir
-		Continue
+        Remove-Item "$SourceDir\$Basename.$hname.lock"
+		Continue   # end this for loop
 	}
 	else #Didnt recognize the video codec
 	{
 		CreateWorkingDir
-        echo "Didnt recognize video codec: $vcodec"
+ 		echo "$(get-date) - $($MediainfoArray.VFormat) is an unknown source video codec"
+        echo "$(get-date) - $filename will be moved to $UnknownDir and the next video will be processed"
 		Move-Item $filename $UnknownDir
+        Remove-Item "$SourceDir\$Basename.$hname.lock"
 		Continue
 	}
-	
-	#Lets do audio
-	#echo $SupportedAudioCodecs
-	#old way of doing it $acodec = $MediainfoOutput | Select-String -Pattern $SupportedAudioCodecs |  % { $_.Matches } | % { $_.Value } 
-	#$acodec = $vcodec[1] #Note I am only looking for array entry one in case of multiple video codecs Detected (Eg, AVC and H264 in the same file but as a single track)
-	#$acodec = $acodec -replace " " , "" #Remove required leading space to match properly
-	
+
+
+  # Now to determine if transcode of video is required.
+
+  #This Script considers the following resolutions -- Note,  down-scaling, or CRF should produce better quality for the finge cases of in-betwen two resolutions, but for now this works.
+#  Name     Height     Width	Width Range
+#  480P	    480	       720	    0-1000
+#  720P	    720	       1280	    1001-1600
+#  1080P	1080	   1920	    1601-2880
+#  4K UHD	2160	   3840	    2881-5760
+#  8K UHD	4320p	   7680	    5761-
+
+#First if depth is resolution check
+# second verification is codec type
+# Third verification is codec bitrate
+
+ if ( ([int]$MediainfoArray["VWidth"] -in 0..1000) -or ($reduce -eq "480p") ) {
+    echo "$(get-date) - Entering 480p desitnation processing."
+       
+    if (($reduce -eq "480p") -and ([int]$MediainfoArray.VWidth -ge 1000)) {  # If reduce was specified and source video is larger than this section.. 
+        write-host "$(get-date) - Video resolution is larger than 480p Maximum (1000) ($($MediainfoArray.VWidth)), and -reduce specified, will transcode and scale the video"
+        $videoopts = "$480p $ffmpegreduce"
+        $passes = $480ppasses
+    }
+    else {
+        if (($codec -eq $MediainfoArray.VFormat) -and (([int]$MediainfoArray.VBitRate) -le $480pVBitRateMax)) { 
+           write-host "$(get-date) - Source Bitrate ($($MediainfoArray.vBitrate)) is less than the maximum ($480pVBitRateMax) and the source ($($MediainfoArray.VFormat)) and desination ($codec) codecs are equal -- Video to be copied"
+           $videoopts = $vcopy
+           $passes = $vcopypasses
+        }
+        else{
+           write-host "$(get-date) - Source Bitrate ($($MediainfoArray.vBitrate)) is greater than the maximum ($480pVBitRateMax) or the source ($($MediainfoArray.VFormat)) and desination ($codec) codecs do not match -- Will Transcode"
+           $videoopts = $480p
+           $passes = $480ppasses
+        }
+    }    
+ }
+ elseif ( ([int]$MediainfoArray["VWidth"] -in 1001..1600) -or ($reduce -eq "720p"))  {
+    echo "$(get-date) - Entering 720p desitnation processing."
+       
+    if (($reduce -eq "720p") -and ([int]$MediainfoArray.VWidth -ge 1600)) {  # If reduce was specified and source video is larger than this section.. 
+        write-host "$(get-date) - Video resolution is larger than 720p Maximum (1600) ($($MediainfoArray.VWidth)), and -reduce specified, will transcode and scale the video"
+        $videoopts = "$720p $ffmpegreduce"
+        $passes = $720ppasses
+    }
+    else {
+        if (($codec -eq $MediainfoArray.VFormat) -and (([int]$MediainfoArray.VBitRate) -le $720pVBitRateMax)) { 
+           write-host "$(get-date) - Source Bitrate ($($MediainfoArray.vBitrate)) is less than the maximum ($720pVBitRateMax) and the source ($($MediainfoArray.VFormat)) and desination ($codec) codecs are equal -- Video to be copied"
+           $videoopts = $vcopy
+           $passes = $vcopypasses
+        }
+        else{
+           write-host "$(get-date) - Source Bitrate ($($MediainfoArray.vBitrate)) is greater than the maximum ($720pVBitRateMax) or the source ($($MediainfoArray.VFormat)) and desination ($codec) codecs do not match -- Will Transcode"
+           $videoopts = $720p
+           $passes = $720ppasses
+        }
+    }    
+}
+ elseif ( ([int]$MediainfoArray["VWidth"] -in 1601..2880) -or ($reduce -eq "1080p")) {
+    echo "$(get-date) - Entering 1080p desitnation processing."
+       
+    if (($reduce -eq "1080p") -and ([int]$MediainfoArray.VWidth -ge 2880)) {  # If reduce was specified and source video is larger than this section.. 
+        write-host "$(get-date) - Video resolution is larger than 1080p Maximum (2880) ($($MediainfoArray.VWidth)), and -reduce specified, will transcode and scale the video"
+        $videoopts = "$1080p $ffmpegreduce"
+        $passes = $1080ppasses
+    }
+    else {
+        if (($codec -eq $MediainfoArray.VFormat) -and (([int]$MediainfoArray.VBitRate) -le $1080pVBitRateMax)) { 
+           write-host "$(get-date) - Source Bitrate ($($MediainfoArray.vBitrate)) is less than the maximum ($1080pVBitRateMax) and the source ($($MediainfoArray.VFormat)) and desination ($codec) codecs are equal -- Video to be copied"
+           $videoopts = $vcopy
+           $passes = $vcopypasses
+        }
+        else{
+           write-host "$(get-date) - Source Bitrate ($($MediainfoArray.vBitrate)) is greater than the maximum ($1080pVBitRateMax) or the source ($($MediainfoArray.VFormat)) and desination ($codec) codecs do not match -- Will Transcode"
+           $videoopts = $1080p
+           $passes = $1080ppasses
+        }
+    }    
+}
+ elseif ( [int]$MediainfoArray["VWidth"] -in 2881..5760) {
+    echo "$(get-date) - Video has a width of $($MediainfoArray.VWidth) and is considered 4k UHD"
+    echo "$(get-date) - This script is unable to handle 4K UHD video yet, moving $filename to $UnknownDir"
+    CreateWorkingdir
+    Move-Item $filename $UnknownDir
+    Remove-Item "$SourceDir\$Basename.$hname.lock"
+    Continue
+}
+ elseif ( [int]$MediainfoArray["VWidth"] -ge 5761) {
+    echo "$(get-date) - Video has a width of $($MediainfoArray.VWidth) and is considered 8k UHD"
+    echo "$(get-date) - This script is unable to handle 8K UHD video yet, moving $filename to $UnknownDir"
+    CreateWorkingdir
+    Move-Item $filename $UnknownDir
+    Remove-Item "$SourceDir\$Basename.$hname.lock"
+    Continue
+}
+
+
 	#remember abit is audio bitrate from before
-	# Old way of doing it $achannelstmp = $MediainfoOutput | Select-String -Pattern "Channel(s)   " -SimpleMatch # find Width
 	# $achannels = $achannelstmp -replace "\D" , "" #Replace all non-number characters with nothing (only # left)
-	echo "$acodec $abit $achannels"
-	#AAC Audio
-	echo $acodec
-	echo TranscodeAudio $TranscodeAudiof
+    echo "$(get-date) - ==========================="
+    echo "$(get-date) - Audio Logic Engine Starting"
+    echo "$(get-date) - ==========================="
+    echo "$(get-date) - Source audio Codec:$($MediainfoArray.AFormat), Channels:$($MediainfoArray.AChannels), Bitrate:$($MediainfoArray.ABitrate)"
+
 	if ($GoodAudio -contains $MediainfoArray["AFormat"])
 	{
-	echo "Good audio codec found"
-		if ( [int]$MediainfoArray["AChannels"] -le 2 -and [int]$MediainfoArray["ABitrate"] -le 64)
-			{ $audioopts = $acopy }
-		elseif  ( [int]$MediainfoArray["AChannels"] -le 2 -and [int]$MediainfoArray["ABitrate"] -gt 64)
-			{ $audioopts = $2ch }
-		elseif  ( [int]$MediainfoArray["AChannels"] -le 6 -and [int]$MediainfoArray["ABitrate"] -le 256)
-			{ $audioopts = $acopy }
-		elseif  ( [int]$MediainfoArray["AChannels"] -le 6 -and [int]$MediainfoArray["ABitrate"] -gt 256)
-			{ $audioopts = $6ch }
-		else 
-			{ $audioopts = $xch }
+		if ( [int]$MediainfoArray["AChannels"] -le 2 -and [int]$MediainfoArray["ABitrate"] -le $2chABitRateMax) { 
+            write-host "$(get-date) - Will Copy Source audio:$($MediainfoArray.AFormat) is supported, and bitrate ($($MediainfoArray.ABitrate)) is below the maximum ($2chABitRateMax) for the number of channels ($($MediainfoArray.AChannels))"
+            $audioopts = $acopy
+            }
+		elseif  ( [int]$MediainfoArray["AChannels"] -le 2 -and [int]$MediainfoArray["ABitrate"] -gt $2chABitRateMax) { 
+            write-host "$(get-date) - Will transcode Source audio:$($MediainfoArray.AFormat) is supported, but bitrate ($($MediainfoArray.ABitrate)) is greater than the maximum ($2chABitRateMax) for the number of channels ($($MediainfoArray.AChannels))"
+            $audioopts = $2ch 
+            }
+		elseif  ( [int]$MediainfoArray["AChannels"] -le 6 -and [int]$MediainfoArray["ABitrate"] -le $6chABitRateMax) {
+            write-host "$(get-date) - Will Copy Source audio:$($MediainfoArray.AFormat) is supported, and bitrate ($($MediainfoArray.ABitrate)) is below the maximum ($6chABitRateMax) for the number of channels ($($MediainfoArray.AChannels))"
+            $audioopts = $acopy 
+            }
+		elseif  ( [int]$MediainfoArray["AChannels"] -le 6 -and [int]$MediainfoArray["ABitrate"] -gt $6chABitRateMax){ 
+            write-host "$(get-date) - Will transcode Source audio:$($MediainfoArray.AFormat) is supported, but bitrate ($($MediainfoArray.ABitrate)) is greater than the maximum ($6chABitRateMax) for the number of channels ($($MediainfoArray.AChannels))"
+            $audioopts = $6ch 
+            }
+		else { 
+            write-host "$(get-date) - Will transcode Source audio:$($MediainfoArray.AFormat) is supported, but bitrate ($($MediainfoArray.ABitrate)) is greater than the maximum ($6chABitRateMax) or the number of channels ($($MediainfoArray.AChannels)) is greater than the maximum (6)"
+            $audioopts = $xch 
+            }
 	}
 	elseif ($TranscodeAudio -contains $MediainfoArray["AFormat"])
 	{
     #echo $MediainfoArray["AChannels"]
-	#echo "Transcode audio codec found"
+	write-host "$(get-date) - Source Audio codec ($($MediainfoArray.AFormat)) is not supported, will transcode"
         if ( $MediainfoArray["AChannels"] -like '*/*' ) {
             $temp = $MediainfoArray["AChannels"].split("{/}")
             $MediainfoArray["AChannels"] = $temp[0]
@@ -479,18 +628,22 @@ foreach ($file in $files) {
 	}
 	else 
 	{
-		echo "$(get-date -f yyyy-MM-dd) Unknown Audio codec type: $MediainfoArray["AFormat"]"
+		Write-host "$(get-date) Unknown Audio codec type: $($MediainfoArray.AFormat)"
 		CreateWorkingDir
 		Move-Item $filename $UnknownDir
+        Remove-Item "$SourceDir\$Basename.$hname.lock"
 		Continue
 	}
+
 	# All done finding options
-	echo "$(get-date -f yyyy-MM-dd) Modifier $modifier"
-	echo "$(get-date -f yyyy-MM-dd) Video options $videooptspass1  Audio Options $audioopts"
-	  
+    echo "$(get-date) - ================="
+    echo "$(get-date) - Transcoder Engine"
+    echo "$(get-date) - ================="
+	echo "$(get-date) - Final Video options $videooptspass1  Audio Options $audioopts"
         if ($passes -eq 1) { 
         	$ffmpegcommand = "-i `"$filename`" $videoopts $audioopts `"$SourceDir\$basename$modifier.mp4`""
-            echo "$(get-date -f yyyy-MM-dd) FFMPEG Command: $ffmpeg $ffmpegcommand"
+	        echo "$(get-date) - Starting Pass 1 of 1"	  
+            echo "$(get-date) - FFMPEG Command: $ffmpeg $ffmpegcommand"
             Start-Process -FilePath "$ffmpeg" -ArgumentList "$ffmpegcommand" -Wait -PassThru
             #PS C:\> start-process calc.exe
             #PS C:\> $p = get-wmiobject Win32_Process -filter "Name='calc.exe'"
@@ -499,9 +652,9 @@ foreach ($file in $files) {
             movefiles($LastExitCode)
          }
         elseif ($passes -eq 2) {
-           #PASS 1
         	$ffmpegcommand = "-y -i `"$filename`" -pass 1 $videoopts $audioopts -f MP4 NUL"
-            echo "$(get-date -f yyyy-MM-dd) FFMPEG Command: $ffmpeg $ffmpegcommand"
+            echo "$(get-date) - Starting Pass 2 of 2"	
+            echo "$(get-date) - FFMPEG Command: $ffmpeg $ffmpegcommand"
             Start-Process -FilePath "$ffmpeg" -ArgumentList "$ffmpegcommand" -Wait -PassThru
 	        if ($LASTEXITCODE -ne 0)  # IF FFMPEG had an error, dont continue with pass 2
             {
@@ -510,11 +663,12 @@ foreach ($file in $files) {
                 Continue
             }
             #PASS 2
+
             $ffmpegcommand = "-i `"$filename`" -pass 2 $videoopts $audioopts `"$SourceDir\$basename$modifier.mp4`""
-	        echo "$(get-date -f yyyy-MM-dd) FFMPEG Command: $ffmpeg $ffmpegcommand"
+            echo "$(get-date) - Starting Pass 1 of 2"	
+	        echo "$(get-date) - FFMPEG Command: $ffmpeg $ffmpegcommand"
             Start-Process -FilePath "$ffmpeg" -ArgumentList "$ffmpegcommand" -Wait -PassThru
             movefiles($LastExitCode)
         }
-
 }
 
