@@ -1,7 +1,8 @@
 ﻿param(
     [string]$reduce = $False,
     [string]$path = ".",
-    [string]$codec = "AVC"
+    [string]$codec = "AVC",
+    [switch]$copylocal = $false
     )
 
 ##########################################################
@@ -50,6 +51,7 @@ Nov 24, 2015- changed to 2-pass instead of CRF 720p and 1080p, fixed int64 vs in
 Feb 27, 2016 - Included switches -x265 to force x265/aac/mp4 -- using medium preset based on http://www.techspot.com/article/1131-hevc-h256-enconding-playback/page7.html
 March 12, 2016 - rebuild switch funcationallty, removed handbrakecli options (never fully implemented and ffmpeg is great)
 March 13, 2016 - Switched x265 480p to 2 pass, updated encode logic engine to handle multiple codecs
+March 14, 2016 - added -copylocal parameter and logic
 #>
 
 #Set Priority to Low
@@ -235,6 +237,7 @@ $MultiDir = "$path\multi" #where to put files with multiple audio tracks
 $BadDir = "$path\bad" #where to put files deemed bad (Old codec, very low bitrate)
 $ErrorDir = "$path\error" #where to put files that something bad happened
 $UnknownDir = "$path\unknown" #Where to put unknown files
+$copylocalDir = "$path\copylocal" # where to put files when -copylocal is used
 
 ###Clear Variables used throughout Script
 $Modifier = ""
