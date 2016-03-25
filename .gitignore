@@ -28,6 +28,7 @@ testvideos/
 *.mkv
 ffmpeg2pass*
 *.lock
+gox265 - local.bat
 
 # =========================
 # Operating System Files

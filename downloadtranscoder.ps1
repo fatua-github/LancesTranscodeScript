@@ -1,7 +1,7 @@
 ﻿param(
     [string]$reduce = $False,
     [string]$path = ".",
-    [string]$codec = "AVC",
+    [string]$codec = "AVC"
     [switch]$copylocal = $false
     )
 
@@ -32,6 +32,9 @@ Requires Mediinfo Template:
 General;VideoCount=%VideoCount%\r\nAudioCount=%AudioCount%\r\nTextCount=%TextCount%\r\nFileSize=%FileSize%\r\nDuration=%Duration%\r\n
 Video;VFormat=%Format%\r\nVCodecID=%Codec ID%\r\nVBitRate=%BitRate%\r\nVWidth=%Width%\r\n
 Audio;AFormat=%Format%\r\nACodecID=%Codec ID%\r\nABitRate=%BitRate%\r\nAChannels=%Channels%\r\n
+
+Also requires mkvtools to extract subtitles: https://mkvtoolnix.download/downloads.html#windows 
+  Download the portable installaer (32 or 64 bit) and place in tool\mkvtoolnix
 #>
 
 <#
@@ -51,7 +54,14 @@ Nov 24, 2015- changed to 2-pass instead of CRF 720p and 1080p, fixed int64 vs in
 Feb 27, 2016 - Included switches -x265 to force x265/aac/mp4 -- using medium preset based on http://www.techspot.com/article/1131-hevc-h256-enconding-playback/page7.html
 March 12, 2016 - rebuild switch funcationallty, removed handbrakecli options (never fully implemented and ffmpeg is great)
 March 13, 2016 - Switched x265 480p to 2 pass, updated encode logic engine to handle multiple codecs
+<<<<<<< HEAD
+March 25, 2016 - Adding function to extract MKV Subtitles based on hints from http://www.powershell.amsterdam/2015/06/29/extracting-subtitles-from-mkv-files/ and using mkvtoolsextract
+      including tool checking and automatic skipping of extraction if mkvtools is missing
+      including filename collision detection in case both internal mkv and external subtitles exist
+      only handles srt type
+=======
 March 14, 2016 - added -copylocal parameter and logic
+>>>>>>> master
 #>
 
 #Set Priority to Low
@@ -150,7 +160,10 @@ $passes = 0
 $mediainfo = "$HomePath\tools\mediaInfo_cli\MediaInfo.exe"
 $mediainfotemplate =  "$HomePath\tools\mediaInfo_cli\Transcode.csv"
 $ffmpeg = "$HomePath\tools\ffmpeg\ffmpeg.exe"
-$Mkvmerge = "C:\Program Files (x86)\MKVToolNix\mkvmerge.exe"
+$mkvextract = "$HomePath\tools\mkvtoolnix\mkvextract.exe"
+$mkvextractexist = 0 #variable to determine if the tool exists
+$mkvmerge = "$HomePath\tools\mkvtoolnix\mkvmerge.exe"
+$mkvmergeexist = 0 #variable to determine if the tool exists
 
 #Base Encoder variables
 $GoodExtensions = ".divx",".mov",".mkv",".avi",".AVI",".mp4",".m4v",".mpg",".ogm",".mpeg",".vob",".avs",".m2ts",".wmv"
@@ -253,7 +266,9 @@ $ffmpegcommand = ""
 # Get list of files in $SourceDir
 $files = get-ChildItem $SourceDir | Sort-Object name
 
-#FUNCTIONS
+###########
+#FUNCTIONS#
+###########
 
 function movefiles ($LastExitCode)
 {
@@ -309,10 +324,149 @@ Function CreateWorkingDir ()
 	}
 }
 
+#Subtitle extract function -- currently only supports .srt from .mkv
+#usage:  subextract <fullpathofsource> <name of outpfile without extensions> <type of source container> <destination path>
+Function Subextract ($fullpathfile, $videoname, $containertype, $destpath) {
+ Write-host "$(Get-date) - Starting subtitle extractor"
+ Write-host "$(Get-date) - Video File: $fullpathfile"
+ Write-host "$(Get-date) - Container Type: $containertype"
 
-#START
+ #if destination path is not there, gracefully extract subtitles to currentdir
+ if ($destpath -eq $null) { $destpath = "." }
+ Write-host "$(get-date) - Destination path: $destpath"
+ 
+ switch ($containertype)
+  {
+     ".mkv"  {
+        #extension is mkv
+        <#
+           {
+        "codec": "SubRip/SRT",
+        "id": 2,
+        "properties": {
+         "codec_id": "S_TEXT/UTF8",
+         "codec_private_length": 0,
+         "default_track": false,
+         "enabled_track": true,
+         "forced_track": false,
+         "language": "eng",
+         "number": 3,
+         "text_subtitles": true,
+         "uid": 3112397999577693116
+        },
+          "type": "subtitles"
+      },
+     {
+       "codec": "SubRip/SRT",
+       "id": 3,
+       "properties": {
+         "codec_id": "S_TEXT/UTF8",
+         "codec_private_length": 0,
+         "default_track": false,
+         "enabled_track": true,
+         "forced_track": false,
+         "language": "eng",
+         "number": 4,
+         "text_subtitles": true,
+         "track_name": "SDH",
+         "uid": 1696238130850447026
+       },
+       "type": "subtitles"
+       #>
+     Write-host "$(Get-date) - Starting Mkv Extractor"
+     $mkvmergeOutput = &$mkvmerge -i -F json $fullpathfile 2>&1 | ConvertFrom-Json
+     #go through all the tracks
+     foreach ($track in $mkvmergeOutput.tracks){
+        #find the subtitle tracks
+        if ($track.type -eq "subtitles") {
+            #set the extension of the extracted file based on the type of subtitle stored in the mkv
+            switch ($track.codec) {
+                "SubRip/SRT" { $subext = "srt" }
+            }
+            #Set the output file name and include track_name if it exists
+            if ($track.properties.track_name -ne $null){
+                $outputfile = "$videoname.$($track.properties.track_name).$($track.properties.language).$subext"
+            }
+            else {
+                $outputfile = "$videoname.$($track.properties.language).$subext"
+            }
+
+            #check for output file name collisions
+            if (test-Path $destpath\$outputfile) {
+                #collision detected, renaming
+                Move-Item $destpath\$outputfile $destpath\$outputfile-orig
+                }
+
+
+            # Starting of choosing to extract only one langague type, for now, hardcoded to english
+            if ($track.properties.language -eq "eng"){
+                $command = "$($track.id):$destpath\$outputfile"
+
+                #write-host $command
+                # mkvextract tracks source-filename [options] TID1:dest-filename1 [TID2:dest-filename2 ...]
+                &$mkvextract tracks `"$fullpathfile`" $command
+            }
+
+
+        }
+        else {
+          #not a subtitle
+        }
+     }
+     }
+  }
+}    
+        
+
+
+###############
+#END FUNCTIONS#
+###############
+
+
+###################################
+#Test that required programs exist#
+###################################
+
+
+write-host "#####################################################################"
+Write-Host "$(get-date) - Testing for existance of required tools"
+write-host "#####################################################################"
+#MkvExtract
+if (Test-Path $mkvextract) {
+    $mkvtoolnixexist = 1   
+    Write-Host "$(get-date) - Found $mkvextract."  -foreground "green"
+    Write-Host "$(get-date) - Will extract SRT english subtitles from mkv files" -foreground "green"
+}
+else {
+    $mkvtoolnixexist=0
+    Write-Host "$(get-date) - $mkvextract NOT FOUND." -foreground "red"  
+    Write-Host "$(get-date) - Will not extract subtitles from mkv files" -foreground "red"
+}
+#MkvMerge
+if (Test-Path $mkvmerge) {
+    $mkvmergeexist = 1   
+    Write-Host "$(get-date) - Found $mkvmerge."  -foreground "green"
+    Write-Host "$(get-date) - Will extract SRT english subtitles from mkv files" -foreground "green"
+}
+else {
+    $mkmergeexist=0
+    Write-Host "$(get-date) - $mkvmerge NOT FOUND." -foreground "red"  
+    Write-Host "$(get-date) - Will not extract subtitles from mkv files" -foreground "red"
+}
+
+
+##########################################
+#  End Testing for existance of programs #
+##########################################
+
+###################
+#Start Main Script#
+###################
 foreach ($file in $files) {
     write-host " " 
+    write-host "$(get-date) - Processing $filename"
+
     $hname = hostname
 	$filename = "$SourceDir\$file"
 	$basename = $file.BaseName
@@ -374,6 +528,9 @@ foreach ($file in $files) {
 	#Check if .mp4 file already exists
 	if (Test-Path "$SourceDir\$Basename.mp4") { $modifier="-transcode" }
 	else { $modifier="" }
+
+#Subtitle extractor
+    Subextract "$sourceDir\$Basename$extension" "$basename" "$extension" "$CompleteDir"
 
 #    echo "Mediainfo path: $mediainfo"
 	#Get Mediainfo
