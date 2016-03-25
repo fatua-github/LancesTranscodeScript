@@ -31,6 +31,8 @@ Requires Mediinfo Template:
 General;VideoCount=%VideoCount%\r\nAudioCount=%AudioCount%\r\nTextCount=%TextCount%\r\nFileSize=%FileSize%\r\nDuration=%Duration%\r\n
 Video;VFormat=%Format%\r\nVCodecID=%Codec ID%\r\nVBitRate=%BitRate%\r\nVWidth=%Width%\r\n
 Audio;AFormat=%Format%\r\nACodecID=%Codec ID%\r\nABitRate=%BitRate%\r\nAChannels=%Channels%\r\n
+
+Also requires mkvtools to extract subtitles: https://mkvtoolnix.download/downloads.html#windows
 #>
 
 <#
@@ -50,6 +52,10 @@ Nov 24, 2015- changed to 2-pass instead of CRF 720p and 1080p, fixed int64 vs in
 Feb 27, 2016 - Included switches -x265 to force x265/aac/mp4 -- using medium preset based on http://www.techspot.com/article/1131-hevc-h256-enconding-playback/page7.html
 March 12, 2016 - rebuild switch funcationallty, removed handbrakecli options (never fully implemented and ffmpeg is great)
 March 13, 2016 - Switched x265 480p to 2 pass, updated encode logic engine to handle multiple codecs
+March 25, 2016 - Adding function to extract MKV Subtitles based on hints from http://www.powershell.amsterdam/2015/06/29/extracting-subtitles-from-mkv-files/ and using mkvtoolsextract
+      including tool checking and automatic skipping of extraction if mkvtools is missing
+      including filename collision detection in case both internal mkv and external subtitles exist
+      only handles srt type
 #>
 
 #Set Priority to Low
