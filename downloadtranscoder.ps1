@@ -60,6 +60,18 @@ March 25, 2016 - Adding function to extract MKV Subtitles based on hints from ht
       only handles srt type
 =======
 March 14, 2016 - added -copylocal parameter and logic
+March 26, 2016 - Adding support for VP9/Ogg/WebM, added  -map_metadata -1 -sn to strip metadata and subtitles from output
+#>
+
+
+<#   Defaults   
+
+1080p
+  mp4-hevc@1500k-AAC@32K/channel
+  mp4-AVC@2100K-AAC@32K/channel
+  webm-VP9@1500k-OPUS@24k/channel
+720p
+
 #>
 
 #Set Priority to Low
@@ -101,7 +113,7 @@ else {
 }
 echo " "
 echo "$(get-date) - Testing chosen codec type"
-if ($codec -eq "HEVC" -or $codec -eq "AVC"){
+if ($codec -eq "HEVC" -or $codec -eq "AVC" -or $coded -eq "VP9"){
  echo "$(get-date) - $codec chosen"
  }
 else{
@@ -142,7 +154,7 @@ if ($switcherror -eq 1)  {
  echo "$(get-date) - There are errors in your switches" 
  echo "$(get-date) - Please use the following format:   downloadtranscoder.ps1 -path <path to source files> -codec [AVC|HEVC] (-reduce [480p|720p|1080p]) (-copylocal)"
  echo "$(get-date) -    -path <path to source files>  for example -path c:\filestoencode"
- echo "$(get-date) -    -codec [AVC|HEVC] -- optional with AVC as default -- choose your encoder"
+ echo "$(get-date) -    -codec [AVC|HEVC|VP9] -- optional with AVC as default -- choose your encoder"
  echo "$(get-date) -    -reduce [480p|720p|1080p]  -- optional switch to reduce if needed to the chosen size"
 }
 
@@ -164,11 +176,11 @@ $mkvmerge = "$HomePath\tools\mkvtoolnix\mkvmerge.exe"
 $mkvmergeexist = 0 #variable to determine if the tool exists
 
 #Base Encoder variables
-$GoodExtensions = ".divx",".mov",".mkv",".avi",".AVI",".mp4",".m4v",".mpg",".ogm",".mpeg",".vob",".avs",".m2ts",".wmv"
-$SupportedVideoCodecs = "XVID","xvid","avc1","AVC","DX50","DIV3","DivX 4","V_MPEG4/ISO/AVC","MPEG Video","MPEG-4 Visual","Microsoft"
-$GoodVideoCodecs = "XVID","xvid","avc1","AVC","DX50","MPEG Video","V_MPEG4/ISO/AVC","MPEG-4 Visual","WVC1"
+$GoodExtensions = ".divx",".mov",".mkv",".avi",".AVI",".mp4",".m4v",".mpg",".ogm",".mpeg",".vob",".avs",".m2ts",".wmv","webm"
+$SupportedVideoCodecs = "XVID","xvid","avc1","AVC","DX50","DIV3","DivX 4","V_MPEG4/ISO/AVC","MPEG Video","MPEG-4 Visual","Microsoft","VP9"
+$GoodVideoCodecs = "XVID","xvid","avc1","AVC","DX50","MPEG Video","V_MPEG4/ISO/AVC","MPEG-4 Visual","WVC1","VP9"
 $BadVideoCodecs = "DIV3","DivX 4"
-$SupportedAudioCodecs = "AAC","AC-3","MPEG Audio","WMA","DTS","PCM","WMA"
+$SupportedAudioCodecs = "AAC","AC-3","MPEG Audio","WMA","DTS","PCM","WMA","opus"
 $GoodAudio = "AAC"
 $TranscodeAudio = "AC-3","MPEG Audio","WMA","DTS","PCM"
 $SubtitlesExtensions = ".idx",".sub",".srt",".ass",".smi"
@@ -184,12 +196,21 @@ elseif ($codec -eq "HEVC") {
   $720pVBitRateMax = 1000*1000
   $1080pVBitRateMax = 1700*1000 
 }
+elseif ($codec -eq "VP9") {  #BETA Bitrates....
+  $480pVBitRateMax = 500*1000
+  $720pVBitRateMax = 1000*1000
+  $1080pVBitRateMax = 1700*1000 
+}
 
 #Hardcode Audio codec to AAC, will update later with webm/VP9/OGG
 $acodec = "AAC"
 if ($acodec -eq "AAC") {
   $2chABitRateMax = 64*1000
-  $6chABitRateMax = 256*1000
+  $6chABitRateMax = 192*1000
+}
+if ($acodec -eq "OPUS") {
+  $2chABitRateMax = 48*1000
+  $6chABitRateMax = 144*1000
 }
 
 #Encoder Strings
@@ -200,11 +221,17 @@ $ffmpeg1080p ="-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 2200k
 $ffmpegHEVC_480p = "-vcodec libx265 -preset medium -b:v 303k -x265-params `"profile=high10`"" # .9 bits per pixel
 $ffmpegHEVC_720p = "-vcodec libx265 -preset medium -b:v 720k -x265-params `"profile=high10`""    #.8 bits per pixel
 $ffmpegHEVC_1080p ="-vcodec libx265 -preset medium -b:v 1300k -x265-params `"profile=high10`""   #.64 bits per pixel
+$ffmpegVP9_480p = "-vcodec libvpx-vp9 -preset medium -b:v 303k" # -x265-params `"profile=high10`"" # .9 bits per pixel -- BETA
+$ffmpegVP9_720p = "-vcodec libvpx-vp9 -preset medium -b:v 720k" # -x265-params `"profile=high10`"" # .9 bits per pixel -- BETA
+$ffmpegVP9_1080p = "-vcodec libvpx-vp9 -preset medium -b:v 1300k" # -x265-params `"profile=high10`"" # .9 bits per pixel -- BETA
 
 $ffmpegacopy = "-acodec copy" 
 $ffmpeg2ch = "-acodec aac -ac 2 -ab 64k -strict -2"
 $ffmpeg6ch = "-acodec aac -ac 6 -ab 192k  -strict -2"
 $ffmpegxch = "-acodec aac -ac 6 -ab 192k  -strict -2" #Greater than 6 ch audio downmixed to 6ch
+$ffmpegopus2ch = "-acodec libopus -ac 2 -ab 48k -strict -2"
+$ffmpegopus6ch = "-acodec libopus -ac 2 -ab 144k -strict -2"
+$ffmpegopusxch = "-acodec libopus -ac 2 -ab 144k -strict -2"
 
 if ( $encoder -eq "ffmpeg" -and $codec -eq "AVC"){
     #echo "ffmepg + AVC chosen"
@@ -799,7 +826,7 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
     echo "$(get-date) - ================="
 	echo "$(get-date) - Final Video options $videooptspass1  Audio Options $audioopts"
         if ($passes -eq 1) { 
-        	$ffmpegcommand = "-i `"$filename`" $videoopts $audioopts `"$SourceDir\$basename$modifier.mp4`""
+        	$ffmpegcommand = "-i `"$filename`" -map_metadata -1 -sn $videoopts $audioopts `"$SourceDir\$basename$modifier.mp4`""
 	        echo "$(get-date) - Starting Pass 1 of 1"	  
             echo "$(get-date) - FFMPEG Command: $ffmpeg $ffmpegcommand"
             Start-Process -FilePath "$ffmpeg" -ArgumentList "$ffmpegcommand" -Wait -PassThru
@@ -810,7 +837,7 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
             movefiles($LastExitCode)
          }
         elseif ($passes -eq 2) {
-        	$ffmpegcommand = "-y -i `"$filename`" -pass 1 $videoopts $audioopts -f MP4 NUL"
+        	$ffmpegcommand = "-y -i `"$filename`"  -map_metadata -1 -sn -pass 1 $videoopts $audioopts -f MP4 NUL"
             echo "$(get-date) - Starting Pass 1 of 2"	
             echo "$(get-date) - FFMPEG Command: $ffmpeg $ffmpegcommand"
             Start-Process -FilePath "$ffmpeg" -ArgumentList "$ffmpegcommand" -Wait -PassThru
@@ -822,7 +849,7 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
             }
             #PASS 2
 
-            $ffmpegcommand = "-i `"$filename`" -pass 2 $videoopts $audioopts `"$SourceDir\$basename$modifier.mp4`""
+            $ffmpegcommand = "-i `"$filename`"  -map_metadata -1 -sn -pass 2 $videoopts $audioopts `"$SourceDir\$basename$modifier.mp4`""
             echo "$(get-date) - Starting Pass 2 of 2"	
 	        echo "$(get-date) - FFMPEG Command: $ffmpeg $ffmpegcommand"
             Start-Process -FilePath "$ffmpeg" -ArgumentList "$ffmpegcommand" -Wait -PassThru
