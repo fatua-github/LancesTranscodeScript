@@ -29,6 +29,7 @@ testvideos/
 ffmpeg2pass*
 *.lock
 gox265 - local.bat
+go-manual-webm.bat
 
 # =========================
 # Operating System Files
