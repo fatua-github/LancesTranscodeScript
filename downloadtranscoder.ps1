@@ -3,6 +3,7 @@
     [string]$path = ".",
     [string]$codec = "AVC",
     [switch]$turbo = $false,
+    [switch]$crf = $false,
     [switch]$copylocal = $false
     )
 
@@ -62,6 +63,8 @@ March 25, 2016 - Adding function to extract MKV Subtitles based on hints from ht
 March 14, 2016 - added -copylocal parameter and logic
 March 28, 2016 - added -turbo for h264/5 fast 1st pass and updated h265 2nd pass to medium.  
      - added "S_HDMV/PGS" { $subext = "sup" } subtitle extract support
+     - added crf option for h265
+     - removed "profile" from h265 as it's broken
 #>
 
 #Set Priority to Low
@@ -85,6 +88,7 @@ echo "$(get-date) - -reduce $reduce"
 echo "$(get-date) - -path $path"
 echo "$(get-date) - -codec $codec"
 echo "$(get-date) - -copylocal $copylocal"
+echo "$(get-date) - -crf"
 echo "$(get-date) - Working path: $CurrentFolder"
 echo "$(get-date) - Script location: $HomePath"
 echo " " 
@@ -201,12 +205,15 @@ $ffmpeg720p2nd = "-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 15
 $ffmpeg720p1st = "-vcodec libx264 -profile:v high -level 41 -preset fast -b:v 1503k" # unchanged numbers from 2012
 $ffmpeg1080p2nd ="-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 2200k" # unchanged numbers from 2012
 $ffmpeg1080p1st ="-vcodec libx264 -profile:v high -level 41 -preset fast -b:v 2200k" # unchanged numbers from 2012
-$ffmpegHEVC_480p2nd = "-vcodec libx265 -preset slow -b:v 303k -x265-params `"profile=high10`"" # .9 bits per pixel
-$ffmpegHEVC_480p1st = "-vcodec libx265 -preset fast -b:v 303k -x265-params `"profile=high10`"" # .9 bits per pixel
-$ffmpegHEVC_720p2nd = "-vcodec libx265 -preset slow -b:v 720k -x265-params `"profile=high10`""    #.8 bits per pixel
-$ffmpegHEVC_720p1st = "-vcodec libx265 -preset fast -b:v 720k -x265-params `"profile=high10`""    #.8 bits per pixel
-$ffmpegHEVC_1080p2nd ="-vcodec libx265 -preset slow -b:v 1300k -x265-params `"profile=high10`""   #.64 bits per pixel
-$ffmpegHEVC_1080p1st ="-vcodec libx265 -preset fast -b:v 1300k -x265-params `"profile=high10`""   #.64 bits per pixel
+$ffmpegHEVC_480p2nd = "-vcodec libx265 -preset slow -b:v 303k" # -x265-params `"profile=high10`" # .9 bits per pixel
+$ffmpegHEVC_480p1st = "-vcodec libx265 -preset fast -b:v 303k" # -x265-params `"profile=high10`" # .9 bits per pixel
+$ffmpegHEVC_720p2nd = "-vcodec libx265 -preset slow -b:v 720k" # -x265-params `"profile=high10`"    #.8 bits per pixel
+$ffmpegHEVC_720p1st = "-vcodec libx265 -preset fast -b:v 720k" # -x265-params `"profile=high10`"   #.8 bits per pixel
+$ffmpegHEVC_1080p2nd ="-vcodec libx265 -preset slow -b:v 1300k"  # -x265-params `"profile=high10`"   #.64 bits per pixel
+$ffmpegHEVC_1080p1st ="-vcodec libx265 -preset fast -b:v 1300k" #  -x265-params `"profile=high10`"   #.64 bits per pixel
+$ffmpegHEVC_480pcrf = "-vcodec libx265 -preset slow -x265-params crf=28" # -x265-params `"profile=high10`"
+$ffmpegHEVC_720pcrf = "-vcodec libx265 -preset slow -x265-params crf=28" # -x265-params `"profile=high10`"
+$ffmpegHEVC_1080pcrf ="-vcodec libx265 -preset slow -x265-params crf=28" #  -x265-params `"profile=high10`" 
 
 $ffmpegacopy = "-acodec copy" 
 $ffmpeg2ch = "-acodec aac -ac 2 -ab 64k -strict -2"
@@ -230,14 +237,14 @@ if ( $encoder -eq "ffmpeg" -and $codec -eq "AVC"){
 	$6ch = $ffmpeg6ch
 	$xch = $ffmpegxch
 }
-elseif ( $encoder -eq "ffmpeg" -and $codec -eq "HEVC"){
+elseif ( $encoder -eq "ffmpeg" -and $codec -eq "HEVC" -and $crf -eq $false){
     #echo "ffmepg + HEVC chosen"
 	$vcopy = $ffmpegvcopy
-    $vcopypasses = 2
+    $vcopypasses = 1
 	$480p1st = $ffmpegHEVC_480p1st
 	$480p2nd = $ffmpegHEVC_480p2nd
     $480ppasses = 2
-	$720p1st = $ffmpegHEVC_720p1nd
+	$720p1st = $ffmpegHEVC_720p1st
 	$720p2nd = $ffmpegHEVC_720p2nd
     $720ppasses = 2
 	$1080p1st = $ffmpegHEVC_1080p1st
@@ -248,10 +255,26 @@ elseif ( $encoder -eq "ffmpeg" -and $codec -eq "HEVC"){
 	$6ch = $ffmpeg6ch
 	$xch = $ffmpegxch
 }
+elseif ( $encoder -eq "ffmpeg" -and $codec -eq "HEVC" -and $crf -eq $true){
+    #echo "ffmepg + HEVC chosen"
+	$vcopy = $ffmpegvcopy
+    $vcopypasses = 1
+	$480p1st = $ffmpegHEVC_480pcrf
+    $480ppasses = 1
+	$720p1st = $ffmpegHEVC_720pcrf
+    $720ppasses = 1
+	$1080p1st = $ffmpegHEVC_1080pcrf
+    $1080ppasses = 1
+	$acopy = $ffmpegacopy
+	$2ch = $ffmpeg2ch
+	$6ch = $ffmpeg6ch
+	$xch = $ffmpegxch
+}
 else {
 	echo "$(get-date) Choose an encoder"
 	exit
 }
+
 
 ### Working Directories
 $SourceDir = $path   #Where the files are to encode
