@@ -2,6 +2,7 @@
     [string]$reduce = $False,
     [string]$path = ".",
     [string]$codec = "AVC",
+    [switch]$turbo = $false,
     [switch]$copylocal = $false
     )
 
@@ -58,8 +59,9 @@ March 25, 2016 - Adding function to extract MKV Subtitles based on hints from ht
       including tool checking and automatic skipping of extraction if mkvtools is missing
       including filename collision detection in case both internal mkv and external subtitles exist
       only handles srt type
-=======
 March 14, 2016 - added -copylocal parameter and logic
+March 28, 2016 - added -turbo for h264/5 fast 1st pass and updated h265 2nd pass to medium.  
+     - added "S_HDMV/PGS" { $subext = "sup" } subtitle extract support
 #>
 
 #Set Priority to Low
@@ -194,12 +196,17 @@ if ($acodec -eq "AAC") {
 
 #Encoder Strings
 $ffmpegvcopy = "-vcodec copy"
-$ffmpeg480p = "-vcodec libx264 -profile:v high -level 41 -preset slow -crf 21" # unchanged numbers from 2012
-$ffmpeg720p = "-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 1503k" # unchanged numbers from 2012
-$ffmpeg1080p ="-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 2200k" # unchanged numbers from 2012
-$ffmpegHEVC_480p = "-vcodec libx265 -preset medium -b:v 303k -x265-params `"profile=high10`"" # .9 bits per pixel
-$ffmpegHEVC_720p = "-vcodec libx265 -preset medium -b:v 720k -x265-params `"profile=high10`""    #.8 bits per pixel
-$ffmpegHEVC_1080p ="-vcodec libx265 -preset medium -b:v 1300k -x265-params `"profile=high10`""   #.64 bits per pixel
+$ffmpeg480p1st = "-vcodec libx264 -profile:v high -level 41 -preset slow -crf 21" # unchanged numbers from 2012  -- No 2nd pass -- Using CRF
+$ffmpeg720p2nd = "-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 1503k" # unchanged numbers from 2012
+$ffmpeg720p1st = "-vcodec libx264 -profile:v high -level 41 -preset fast -b:v 1503k" # unchanged numbers from 2012
+$ffmpeg1080p2nd ="-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 2200k" # unchanged numbers from 2012
+$ffmpeg1080p1st ="-vcodec libx264 -profile:v high -level 41 -preset fast -b:v 2200k" # unchanged numbers from 2012
+$ffmpegHEVC_480p2nd = "-vcodec libx265 -preset slow -b:v 303k -x265-params `"profile=high10`"" # .9 bits per pixel
+$ffmpegHEVC_480p1st = "-vcodec libx265 -preset fast -b:v 303k -x265-params `"profile=high10`"" # .9 bits per pixel
+$ffmpegHEVC_720p2nd = "-vcodec libx265 -preset slow -b:v 720k -x265-params `"profile=high10`""    #.8 bits per pixel
+$ffmpegHEVC_720p1st = "-vcodec libx265 -preset fast -b:v 720k -x265-params `"profile=high10`""    #.8 bits per pixel
+$ffmpegHEVC_1080p2nd ="-vcodec libx265 -preset slow -b:v 1300k -x265-params `"profile=high10`""   #.64 bits per pixel
+$ffmpegHEVC_1080p1st ="-vcodec libx265 -preset fast -b:v 1300k -x265-params `"profile=high10`""   #.64 bits per pixel
 
 $ffmpegacopy = "-acodec copy" 
 $ffmpeg2ch = "-acodec aac -ac 2 -ab 64k -strict -2"
@@ -210,11 +217,13 @@ if ( $encoder -eq "ffmpeg" -and $codec -eq "AVC"){
     #echo "ffmepg + AVC chosen"
 	$vcopy = $ffmpegvcopy
     $vcopypasses = 1
-	$480p = $ffmpeg480p 
+	$480p1st = $ffmpeg480p1st
     $480ppasses = 1
-	$720p = $ffmpeg720p
+	$720p1st = $ffmpeg720p1st
+	$720p2nd = $ffmpeg720p2nd
     $720ppasses = 2
-	$1080p = $ffmpeg1080p
+	$1080p1st = $ffmpeg1080p1st
+	$1080p2nd = $ffmpeg1080p2nd
     $1080ppasses = 2
 	$acopy = $ffmpegacopy
 	$2ch = $ffmpeg2ch
@@ -225,11 +234,14 @@ elseif ( $encoder -eq "ffmpeg" -and $codec -eq "HEVC"){
     #echo "ffmepg + HEVC chosen"
 	$vcopy = $ffmpegvcopy
     $vcopypasses = 2
-	$480p = $ffmpegHEVC_480p
+	$480p1st = $ffmpegHEVC_480p1st
+	$480p2nd = $ffmpegHEVC_480p2nd
     $480ppasses = 2
-	$720p = $ffmpegHEVC_720p
+	$720p1st = $ffmpegHEVC_720p1nd
+	$720p2nd = $ffmpegHEVC_720p2nd
     $720ppasses = 2
-	$1080p = $ffmpegHEVC_1080p
+	$1080p1st = $ffmpegHEVC_1080p1st
+	$1080p2nd = $ffmpegHEVC_1080p2nd
     $1080ppasses = 2
 	$acopy = $ffmpegacopy
 	$2ch = $ffmpeg2ch
@@ -380,6 +392,7 @@ Function Subextract ($fullpathfile, $videoname, $containertype, $destpath) {
             #set the extension of the extracted file based on the type of subtitle stored in the mkv
             switch ($track.codec) {
                 "SubRip/SRT" { $subext = "srt" }
+                "S_HDMV/PGS" { $subext = "sup" }
             }
             #Set the output file name and include track_name if it exists
             if ($track.properties.track_name -ne $null){
@@ -662,18 +675,20 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
        
     if (($reduce -eq "480p") -and ([int]$MediainfoArray.VWidth -ge 1000)) {  # If reduce was specified and source video is larger than this section.. 
         write-host "$(get-date) - Video resolution is larger than 480p Maximum (1000) ($($MediainfoArray.VWidth)), and -reduce specified, will transcode and scale the video"
-        $videoopts = "$480p $ffmpegreduce"
+        $videoopts1st = "$480p1st $ffmpegreduce"
+        $videoopts2nd = "$480p2nd $ffmpegreduce"
         $passes = $480ppasses
     }
     else {
         if (($codec -eq $MediainfoArray.VFormat) -and (([int]$MediainfoArray.VBitRate) -le $480pVBitRateMax)) { 
            write-host "$(get-date) - Source Bitrate ($($MediainfoArray.vBitrate)) is less than the maximum ($480pVBitRateMax) and the source ($($MediainfoArray.VFormat)) and desination ($codec) codecs are equal -- Video to be copied"
-           $videoopts = $vcopy
+           $videoopts1st = $vcopy
            $passes = $vcopypasses
         }
         else{
            write-host "$(get-date) - Source Bitrate ($($MediainfoArray.vBitrate)) is greater than the maximum ($480pVBitRateMax) or the source ($($MediainfoArray.VFormat)) and desination ($codec) codecs do not match -- Will Transcode"
-           $videoopts = $480p
+           $videoopts1st = $480p1st
+           $videoopts2nd = $480p2nd
            $passes = $480ppasses
         }
     }    
@@ -683,18 +698,20 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
        
     if (($reduce -eq "720p") -and ([int]$MediainfoArray.VWidth -ge 1600)) {  # If reduce was specified and source video is larger than this section.. 
         write-host "$(get-date) - Video resolution is larger than 720p Maximum (1600) ($($MediainfoArray.VWidth)), and -reduce specified, will transcode and scale the video"
-        $videoopts = "$720p $ffmpegreduce"
+        $videoopts1st = "$720p1st $ffmpegreduce"
+        $videoopts2nd = "$720p2nd $ffmpegreduce"
         $passes = $720ppasses
     }
     else {
         if (($codec -eq $MediainfoArray.VFormat) -and (([int]$MediainfoArray.VBitRate) -le $720pVBitRateMax)) { 
            write-host "$(get-date) - Source Bitrate ($($MediainfoArray.vBitrate)) is less than the maximum ($720pVBitRateMax) and the source ($($MediainfoArray.VFormat)) and desination ($codec) codecs are equal -- Video to be copied"
-           $videoopts = $vcopy
+           $videoopts1st = $vcopy
            $passes = $vcopypasses
         }
         else{
            write-host "$(get-date) - Source Bitrate ($($MediainfoArray.vBitrate)) is greater than the maximum ($720pVBitRateMax) or the source ($($MediainfoArray.VFormat)) and desination ($codec) codecs do not match -- Will Transcode"
-           $videoopts = $720p
+           $videoopts1st = $720p1st
+           $videoopts2nd = $720p2nd
            $passes = $720ppasses
         }
     }    
@@ -704,18 +721,20 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
        
     if (($reduce -eq "1080p") -and ([int]$MediainfoArray.VWidth -ge 2880)) {  # If reduce was specified and source video is larger than this section.. 
         write-host "$(get-date) - Video resolution is larger than 1080p Maximum (2880) ($($MediainfoArray.VWidth)), and -reduce specified, will transcode and scale the video"
-        $videoopts = "$1080p $ffmpegreduce"
+        $videoopts1st = "$1080p1st $ffmpegreduce"
+        $videoopts2nd = "$1080p2nd $ffmpegreduce"
         $passes = $1080ppasses
     }
     else {
         if (($codec -eq $MediainfoArray.VFormat) -and (([int]$MediainfoArray.VBitRate) -le $1080pVBitRateMax)) { 
            write-host "$(get-date) - Source Bitrate ($($MediainfoArray.vBitrate)) is less than the maximum ($1080pVBitRateMax) and the source ($($MediainfoArray.VFormat)) and desination ($codec) codecs are equal -- Video to be copied"
-           $videoopts = $vcopy
+           $videoopts1st = $vcopy
            $passes = $vcopypasses
         }
         else{
            write-host "$(get-date) - Source Bitrate ($($MediainfoArray.vBitrate)) is greater than the maximum ($1080pVBitRateMax) or the source ($($MediainfoArray.VFormat)) and desination ($codec) codecs do not match -- Will Transcode"
-           $videoopts = $1080p
+           $videoopts1st = $1080p1st
+           $videoopts2nd = $1080p2nd
            $passes = $1080ppasses
         }
     }    
@@ -799,7 +818,7 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
     echo "$(get-date) - ================="
 	echo "$(get-date) - Final Video options $videooptspass1  Audio Options $audioopts"
         if ($passes -eq 1) { 
-        	$ffmpegcommand = "-i `"$filename`" $videoopts $audioopts `"$SourceDir\$basename$modifier.mp4`""
+        	$ffmpegcommand = "-i `"$filename`" $videoopts1st $audioopts `"$SourceDir\$basename$modifier.mp4`""
 	        echo "$(get-date) - Starting Pass 1 of 1"	  
             echo "$(get-date) - FFMPEG Command: $ffmpeg $ffmpegcommand"
             Start-Process -FilePath "$ffmpeg" -ArgumentList "$ffmpegcommand" -Wait -PassThru
@@ -810,7 +829,7 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
             movefiles($LastExitCode)
          }
         elseif ($passes -eq 2) {
-        	$ffmpegcommand = "-y -i `"$filename`" -pass 1 $videoopts $audioopts -f MP4 NUL"
+        	$ffmpegcommand = "-y -i `"$filename`" -pass 1 $videoopts1st $audioopts -f MP4 NUL"
             echo "$(get-date) - Starting Pass 1 of 2"	
             echo "$(get-date) - FFMPEG Command: $ffmpeg $ffmpegcommand"
             Start-Process -FilePath "$ffmpeg" -ArgumentList "$ffmpegcommand" -Wait -PassThru
@@ -822,7 +841,7 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
             }
             #PASS 2
 
-            $ffmpegcommand = "-i `"$filename`" -pass 2 $videoopts $audioopts `"$SourceDir\$basename$modifier.mp4`""
+            $ffmpegcommand = "-i `"$filename`" -pass 2 $videoopts2nd $audioopts `"$SourceDir\$basename$modifier.mp4`""
             echo "$(get-date) - Starting Pass 2 of 2"	
 	        echo "$(get-date) - FFMPEG Command: $ffmpeg $ffmpegcommand"
             Start-Process -FilePath "$ffmpeg" -ArgumentList "$ffmpegcommand" -Wait -PassThru
