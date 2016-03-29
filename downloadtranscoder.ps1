@@ -65,6 +65,7 @@ March 28, 2016 - added -turbo for h264/5 fast 1st pass and updated h265 2nd pass
      - added "S_HDMV/PGS" { $subext = "sup" } subtitle extract support
      - added crf option for h265
      - removed "profile" from h265 as it's broken
+March 29th, 2016 - Tweaked CRF settings
 #>
 
 #Set Priority to Low
@@ -212,8 +213,8 @@ $ffmpegHEVC_720p1st = "-vcodec libx265 -preset fast -b:v 720k" # -x265-params `"
 $ffmpegHEVC_1080p2nd ="-vcodec libx265 -preset slow -b:v 1300k"  # -x265-params `"profile=high10`"   #.64 bits per pixel
 $ffmpegHEVC_1080p1st ="-vcodec libx265 -preset fast -b:v 1300k" #  -x265-params `"profile=high10`"   #.64 bits per pixel
 $ffmpegHEVC_480pcrf = "-vcodec libx265 -preset slow -x265-params crf=28" # -x265-params `"profile=high10`"
-$ffmpegHEVC_720pcrf = "-vcodec libx265 -preset slow -x265-params crf=28" # -x265-params `"profile=high10`"
-$ffmpegHEVC_1080pcrf ="-vcodec libx265 -preset slow -x265-params crf=28" #  -x265-params `"profile=high10`" 
+$ffmpegHEVC_720pcrf = "-vcodec libx265 -preset slow -x265-params crf=27" # -x265-params `"profile=high10`"
+$ffmpegHEVC_1080pcrf ="-vcodec libx265 -preset slow -x265-params crf=26" #  -x265-params `"profile=high10`" 
 
 $ffmpegacopy = "-acodec copy" 
 $ffmpeg2ch = "-acodec aac -ac 2 -ab 64k -strict -2"
