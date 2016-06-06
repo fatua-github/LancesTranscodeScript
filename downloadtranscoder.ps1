@@ -67,6 +67,12 @@ March 28, 2016 - added -turbo for h264/5 fast 1st pass and updated h265 2nd pass
      - removed "profile" from h265 as it's broken
 March 29th, 2016 - Tweaked CRF settings
 March 30th, 2016 - Tweaked h265 encode speed, slow just takes too long on my hardware -- eventually i'll create a settings file that users will have the ability to change this
+April 16th, 2016 - Increased qualith of video for h265 slightly
+May 9th, 2016 - added to the test-path statements to handle square brackets in the filename properly.
+May 19th, 2016 - Added HEVC reencode support
+May 25th, 2016 - fixed square bracket handling by escapting the filenames instead of using --LiteralPath
+June 4th, 2016 - Added creation of log files to "unknown" movements so user can see why the script rejected processing
+June 5th, 2016 - Moved Subtitle extractor to after video and audio checks, fixed lockfile and errorlog naming when square brackes are in file name, fixed source video codec array string
 #>
 
 #Set Priority to Low
@@ -75,6 +81,7 @@ $a.PriorityClass = "Idle"
 
 $HomePath = Split-Path -parent $MyInvocation.MyCommand.Definition
 $CurrentFolder = pwd
+
 
 
 # Start Switch evaluation
@@ -173,19 +180,17 @@ $mkvmergeexist = 0 #variable to determine if the tool exists
 
 #Base Encoder variables
 $GoodExtensions = ".divx",".mov",".mkv",".avi",".AVI",".mp4",".m4v",".mpg",".ogm",".mpeg",".vob",".avs",".m2ts",".wmv"
-$SupportedVideoCodecs = "XVID","xvid","avc1","AVC","DX50","DIV3","DivX 4","V_MPEG4/ISO/AVC","MPEG Video","MPEG-4 Visual","Microsoft"
-$GoodVideoCodecs = "XVID","xvid","avc1","AVC","DX50","MPEG Video","V_MPEG4/ISO/AVC","MPEG-4 Visual","WVC1"
+$SupportedVideoCodecs = "XVID","xvid","avc1","AVC","DX50","DIV3","DivX 4","V_MPEG4/ISO/AVC","MPEG Video","MPEG-4 Visual","Microsoft","VC-1","WMV3","High Efficiency Video Coding","HEVC","V_MPEGH/ISO/HEVC"
 $BadVideoCodecs = "DIV3","DivX 4"
-$SupportedAudioCodecs = "AAC","AC-3","MPEG Audio","WMA","DTS","PCM","WMA"
+$SupportedAudioCodecs = "AAC","AC-3","MPEG Audio","WMA","DTS","PCM","WMA","Atmos / TrueHD","FLAC"   #Mediainfo Format
 $GoodAudio = "AAC"
-$TranscodeAudio = "AC-3","MPEG Audio","WMA","DTS","PCM"
 $SubtitlesExtensions = ".idx",".sub",".srt",".ass",".smi"
 
 # Maximum resolutions for source videos -- maybe switch this to an formula based on source resolution * some factor
 if ($codec -eq "AVC") {  #Mediainfo outputs Kbytes*1000 as bytes, not 1024
   $480pVBitRateMax = 899*1000  
-  $720pVBitRateMax = 1500*1000
-  $1080pVBitRateMax = 2000*1000
+  $720pVBitRateMax = 1700*1000
+  $1080pVBitRateMax = 2200*1000
 }
 elseif ($codec -eq "HEVC") {
   $480pVBitRateMax = 500*1000
@@ -204,18 +209,18 @@ if ($acodec -eq "AAC") {
 $ffmpegvcopy = "-vcodec copy"
 $ffmpeg480p1st = "-vcodec libx264 -profile:v high -level 41 -preset slow -crf 21" # unchanged numbers from 2012  -- No 2nd pass -- Using CRF
 $ffmpeg720p2nd = "-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 1503k" # unchanged numbers from 2012
-$ffmpeg720p1st = "-vcodec libx264 -profile:v high -level 41 -preset fast -b:v 1503k" # unchanged numbers from 2012
+$ffmpeg720p1st = "-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 1503k" # unchanged numbers from 2012
 $ffmpeg1080p2nd ="-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 2200k" # unchanged numbers from 2012
-$ffmpeg1080p1st ="-vcodec libx264 -profile:v high -level 41 -preset fast -b:v 2200k" # unchanged numbers from 2012
+$ffmpeg1080p1st ="-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 2200k" # unchanged numbers from 2012
 $ffmpegHEVC_480p2nd = "-vcodec libx265 -preset slow -b:v 303k" # -x265-params `"profile=high10`" # .9 bits per pixel
 $ffmpegHEVC_480p1st = "-vcodec libx265 -preset fast -b:v 303k" # -x265-params `"profile=high10`" # .9 bits per pixel
 $ffmpegHEVC_720p2nd = "-vcodec libx265 -preset slow -b:v 720k" # -x265-params `"profile=high10`"    #.8 bits per pixel
 $ffmpegHEVC_720p1st = "-vcodec libx265 -preset fast -b:v 720k" # -x265-params `"profile=high10`"   #.8 bits per pixel
 $ffmpegHEVC_1080p2nd ="-vcodec libx265 -preset slow -b:v 1300k"  # -x265-params `"profile=high10`"   #.64 bits per pixel
 $ffmpegHEVC_1080p1st ="-vcodec libx265 -preset fast -b:v 1300k" #  -x265-params `"profile=high10`"   #.64 bits per pixel
-$ffmpegHEVC_480pcrf = "-vcodec libx265 -preset slow -x265-params crf=28" # -x265-params `"profile=high10`"
-$ffmpegHEVC_720pcrf = "-vcodec libx265 -preset medium -x265-params crf=27" # -x265-params `"profile=high10`"
-$ffmpegHEVC_1080pcrf ="-vcodec libx265 -preset medium -x265-params crf=26" #  -x265-params `"profile=high10`" 
+$ffmpegHEVC_480pcrf = "-vcodec libx265 -preset slow -x265-params crf=26" # -x265-params `"profile=high10`"
+$ffmpegHEVC_720pcrf = "-vcodec libx265 -preset medium -x265-params crf=25" # -x265-params `"profile=high10`"
+$ffmpegHEVC_1080pcrf ="-vcodec libx265 -preset medium -x265-params crf=24" #  -x265-params `"profile=high10`" 
 
 $ffmpegacopy = "-acodec copy" 
 $ffmpeg2ch = "-acodec aac -ac 2 -ab 64k -strict -2"
@@ -331,8 +336,6 @@ function movefiles ($LastExitCode)
     	Move-Item $filename $ErrorDir
     	Move-Item $SourceDir\$basename$modifier.mp4 $ErrorDir
 	} 
-    #Remove Lock file
-    Remove-Item "$SourceDir\$Basename.$hname.lock"
 }
 #Test/Create working directories function
 Function CreateWorkingDir ()
@@ -505,18 +508,25 @@ foreach ($file in $files) {
 
     $hname = hostname
 	$filename = "$SourceDir\$file"
-	$basename = $file.BaseName
+	$basenameliteral = $file.BaseName
+    $lockfileliteral = "$Basenameliteral.$hname.lock"
+    $basename = [Management.Automation.WildcardPattern]::Escape($basenameliteral)    #escape the filename to take care of square brackets
+    $lockfile = [Management.Automation.WildcardPattern]::Escape($lockfileliteral)    #escape the filename to take care of square brackets
 	$extension = $file.Extension
-	
+
+    $filename = [Management.Automation.WildcardPattern]::Escape($filename)    #escape the filename to take care of square brackets
+	#[Regex]::Escape($String2)
     #Check if extension is a known one
     if (($GoodExtensions -notcontains $extension) -and ($SubtitlesExtensions -notcontains $extension)) {
       echo "$(get-date) - $filename has unknown exension -- Skipping."
       Continue
     }
+    
 
 	# as time passes from first creation of $files, first test if file still exists
     if (!(Test-Path $filename))
-     { continue }
+     { write-host "file doesnt exist anymore"
+        continue }
 
     #check if lockfile
 	if ("$extension" -eq ".lock")
@@ -526,7 +536,7 @@ foreach ($file in $files) {
     }
 
     #Check if is a directory, if so skip
-    if (Test-Path -Path $filename -PathType Container )
+    if (Test-Path $filename -PathType Container )
 	{
 		echo "$(get-date) $filename Is a directory, skipping"
 		Continue
@@ -559,14 +569,13 @@ foreach ($file in $files) {
     
 #    echo "File: $file Filename: $filename Basename: $basename Extension: $extension"
     # Lock file down for further processing
-    New-Item "$SourceDir\$Basename.$hname.lock" -type file	| Out-Null
+
+    echo "Lockfile: $lockfileliteral"
+    New-Item -Path $SourceDir -Name $lockfileliteral -type file -force	| Out-Null
 
 	#Check if .mp4 file already exists
 	if (Test-Path "$SourceDir\$Basename.mp4") { $modifier="-transcode" }
 	else { $modifier="" }
-
-#Subtitle extractor
-    Subextract "$sourceDir\$Basename$extension" "$basename" "$extension" "$CompleteDir"
 
 #    echo "Mediainfo path: $mediainfo"
 	#Get Mediainfo
@@ -630,11 +639,11 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
 	  	#Check/Make working folders
 	  	CreateWorkingDir
 	  	Move-Item $filename $MultiDir
-        Remove-Item "$SourceDir\$Basename.$hname.lock"
+        Remove-Item -path $(Join-Path $SourceDir $lockfile)
 		Continue
 	}
 #Testing source video codec
-	if ($GoodVideoCodecs -contains $MediainfoArray['VFormat']) 
+	if ($SupportedVideoCodecs -contains $MediainfoArray['VFormat']) 
 	{
 
         write-host "$(get-date) - $($MediainfoArray.VFormat) is an acceptable source codec"
@@ -667,16 +676,20 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
         echo "$(get-date) - $filename will be moved to $BadDir and the next video will be processed"
 		CreateWorkingDir
 		Move-Item $filename $BadDir
-        Remove-Item "$SourceDir\$Basename.$hname.lock"
+        Remove-Item -path $(Join-Path $SourceDir $lockfile)
 		Continue   # end this for loop
-	}
+	}`
 	else #Didnt recognize the video codec
 	{
 		CreateWorkingDir
- 		echo "$(get-date) - $($MediainfoArray.VFormat) is an unknown source video codec"
-        echo "$(get-date) - $filename will be moved to $UnknownDir and the next video will be processed"
+ 		$tmp = "$(get-date) - $($MediainfoArray.VFormat) is an unknown source video codec" 
+        write-host $tmp
+        $tmp | out-file -literalpath "$UnknownDir\$Basenameliteral.error.log" -append
+        $tmp = "$(get-date) - $filename will be moved to $UnknownDir and the next video will be processed"
+        write-host $tmp
+        $tmp | out-file -literalpath "$UnknownDir\$Basenameliteral.error.log" -append
 		Move-Item $filename $UnknownDir
-        Remove-Item "$SourceDir\$Basename.$hname.lock"
+        Remove-Item -path $(Join-Path $SourceDir $lockfile)
 		Continue
 	}
 
@@ -765,16 +778,24 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
     }    
 }
  elseif ( [int]$MediainfoArray["VWidth"] -in 2881..5760) {
-    echo "$(get-date) - Video has a width of $($MediainfoArray.VWidth) and is considered 4k UHD"
-    echo "$(get-date) - This script is unable to handle 4K UHD video yet, moving $filename to $UnknownDir"
+    $tmp = "$(get-date) - Video has a width of $($MediainfoArray.VWidth) and is considered 4k UHD"
+    write-host $tmp 
+    out-file $tmp -literalpath "$UnknownDir\$Basenameliteral.error.log" -append 
+    $tmp = "$(get-date) - This script is unable to handle 4K UHD video yet, moving $filename to $UnknownDir"
+    write-host $tmp
+    out-file $tmp -literalpath "$UnknownDir\$Basenameliteral.error.log" -append
     CreateWorkingdir
     Move-Item $filename $UnknownDir
     Remove-Item "$SourceDir\$Basename.$hname.lock"
     Continue
 }
  elseif ( [int]$MediainfoArray["VWidth"] -ge 5761) {
-    echo "$(get-date) - Video has a width of $($MediainfoArray.VWidth) and is considered 8k UHD"
-    echo "$(get-date) - This script is unable to handle 8K UHD video yet, moving $filename to $UnknownDir"
+    $tmp = "$(get-date) - Video has a width of $($MediainfoArray.VWidth) and is considered 8k UHD"
+    write-host $tmp
+    out-file $tmp -literalpath "$UnknownDir\$Basenameliteral.error.log" -append
+    $tmp = "$(get-date) - This script is unable to handle 8K UHD video yet, moving $filename to $UnknownDir"
+    write-host $tmp
+    out-file $tmp -literalpath "$UnknownDir\$Basenameliteral.error.log" -append
     CreateWorkingdir
     Move-Item $filename $UnknownDir
     Remove-Item "$SourceDir\$Basename.$hname.lock"
@@ -812,7 +833,7 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
             $audioopts = $xch 
             }
 	}
-	elseif ($TranscodeAudio -contains $MediainfoArray["AFormat"])
+	elseif ($SupportedAudioCodecs -contains $MediainfoArray["AFormat"])
 	{
     #echo $MediainfoArray["AChannels"]
 	write-host "$(get-date) - Source Audio codec ($($MediainfoArray.AFormat)) is not supported, will transcode"
@@ -830,14 +851,20 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
 	}
 	else 
 	{
-		Write-host "$(get-date) Unknown Audio codec type: $($MediainfoArray.AFormat)"
+		$tmp = "$(get-date) Unknown Audio codec type: $($MediainfoArray.AFormat)"
+        write-host $tmp
+        $tmp | out-file -literalpath "$UnknownDir\$Basenameliteral.error.log" -append
 		CreateWorkingDir
 		Move-Item $filename $UnknownDir
-        Remove-Item "$SourceDir\$Basename.$hname.lock"
+        Remove-Item -path $(Join-Path $SourceDir $lockfile)
 		Continue
 	}
-
 	# All done finding options
+
+#Subtitle extractor
+    Subextract "$sourceDir\$Basename$extension" "$basename" "$extension" "$CompleteDir"
+
+
     echo "$(get-date) - ================="
     echo "$(get-date) - Transcoder Engine"
     echo "$(get-date) - ================="
@@ -852,6 +879,7 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
             #PS C:\> $p.SetPriority(64)
 	        #echo "exit:" $LastExitCode
             movefiles($LastExitCode)
+            Remove-Item -path $(Join-Path $SourceDir $lockfile)
          }
         elseif ($passes -eq 2) {
         	$ffmpegcommand = "-y -i `"$filename`" -pass 1 $videoopts1st $audioopts -f MP4 NUL"
@@ -870,7 +898,9 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
             echo "$(get-date) - Starting Pass 2 of 2"	
 	        echo "$(get-date) - FFMPEG Command: $ffmpeg $ffmpegcommand"
             Start-Process -FilePath "$ffmpeg" -ArgumentList "$ffmpegcommand" -Wait -PassThru
+
             movefiles($LastExitCode)
+            Remove-Item -path $(Join-Path $SourceDir $lockfile)
         }
 }
 
