@@ -28,13 +28,7 @@ testvideos/
 *.mkv
 ffmpeg2pass*
 *.lock
-gox265 - local.bat
-gox264 - d.bat
-gox265 - Local 2 pass.bat
-gox264.bat
-go-manual-webm.bat
-gox265.bat
-
+go*.bat
 
 # =========================
 # Operating System Files
