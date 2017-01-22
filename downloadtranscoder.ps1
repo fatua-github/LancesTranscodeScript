@@ -1,6 +1,6 @@
 ﻿param(
     [string]$reduce = $False,
-    [string]$path = ".",
+    [string]$path = ".\*",
     [string]$codec = "AVC",
     [switch]$turbo = $false,
     [switch]$crf = $false,
@@ -45,7 +45,7 @@ ChangeLog
 November 15th, 2012 - Initial Creation
 Dec 2, 2012 - Fixed copy, Added initial base for HandbrakeCli, Sorted filelist, And created a Mediainfo Template
 Dec 9th, 2012 - Fixed error in Multi detection and moving - missed continue statement + reference to HD720 - only supported in newer versions.
-Dec 16th, 2012 - Added PCM audio support, and .avs input file support
+Dec 16th, 2012 - Added PCM audio support, and .avs input file support*.
 Oct 24th, 2015 - Updated ffmpeg launch to Start-Process  and modifed to use the aac expermintal codec instead of gpl unfriendly faac
 Nov 1, 2015 - Forked from transcode.ps1.   
             - Included ability to recognize subtitles and increased quality of encodes and allowing 1080p.  
@@ -73,6 +73,11 @@ May 19th, 2016 - Added HEVC reencode support
 May 25th, 2016 - fixed square bracket handling by escapting the filenames instead of using --LiteralPath
 June 4th, 2016 - Added creation of log files to "unknown" movements so user can see why the script rejected processing
 June 5th, 2016 - Moved Subtitle extractor to after video and audio checks, fixed lockfile and errorlog naming when square brackes are in file name, fixed source video codec array string
+<<<<<<< 0c306b45402baf27de2dfeb7f58f75c0485596e9
+=======
+Jan 12, 2017 - Copy *.nfo, *.jpg as well
+Jan 21st, 2017 - rewrote the order engine so that it encodes the oldest first and repulls folder listing after each encode
+>>>>>>> 9386134e649e6cc51e6a6028a7faa147258a23df
 #>
 
 #Set Priority to Low
@@ -124,6 +129,22 @@ else{
  $switcherror = 1
 }
 
+#See if path ends in \* if not, add it
+if ($path.substring($path.length - 2) -ne "\*") {
+    if ($path.substring($path.length - 1) -eq "*") {
+        echo "$(get-date) - Error: Your path ended in * and not \* or just a folder path"
+        $switcherror = 1  
+    }
+    elseif ($path.substring($path.length -1 ) -eq "\") {
+        echo "$(get-date) - Note:  Path ended in \,  adding * to the end"
+        $path = $path+"*"
+    }
+    else{
+        echo "$(get-date) - Note: Adding \* to the end of your path" 
+        $path = $path+"\*"
+    }
+}
+
 echo " "    
 echo "$(get-date) - Testing if reduce is being used"
 
@@ -159,6 +180,7 @@ if ($switcherror -eq 1)  {
  echo "$(get-date) -    -path <path to source files>  for example -path c:\filestoencode"
  echo "$(get-date) -    -codec [AVC|HEVC] -- optional with AVC as default -- choose your encoder"
  echo "$(get-date) -    -reduce [480p|720p|1080p]  -- optional switch to reduce if needed to the chosen size"
+ exit
 }
 
     
@@ -179,7 +201,7 @@ $mkvmerge = "$HomePath\tools\mkvtoolnix\mkvmerge.exe"
 $mkvmergeexist = 0 #variable to determine if the tool exists
 
 #Base Encoder variables
-$GoodExtensions = ".divx",".mov",".mkv",".avi",".AVI",".mp4",".m4v",".mpg",".ogm",".mpeg",".vob",".avs",".m2ts",".wmv"
+$GoodExtensions = "*.divx","*.mov","*.mkv","*.avi","*.mp4","*.m4v","*.mpg","*.ogm","*.mpeg","*.vob","*.avs","*.m2ts","*.wmv"
 $SupportedVideoCodecs = "XVID","xvid","avc1","AVC","DX50","DIV3","DivX 4","V_MPEG4/ISO/AVC","MPEG Video","MPEG-4 Visual","Microsoft","VC-1","WMV3","High Efficiency Video Coding","HEVC","V_MPEGH/ISO/HEVC"
 $BadVideoCodecs = "DIV3","DivX 4"
 $SupportedAudioCodecs = "AAC","AC-3","MPEG Audio","WMA","DTS","PCM","WMA","Atmos / TrueHD","FLAC"   #Mediainfo Format
@@ -285,12 +307,14 @@ else {
 
 ### Working Directories
 $SourceDir = $path   #Where the files are to encode
-$CompleteDir = "$path\complete" #Where to put encoded files, and original file
-$MultiDir = "$path\multi" #where to put files with multiple audio tracks
-$BadDir = "$path\bad" #where to put files deemed bad (Old codec, very low bitrate)
-$ErrorDir = "$path\error" #where to put files that something bad happened
-$UnknownDir = "$path\unknown" #Where to put unknown files
-$copylocalDir = "$path\copylocal" # where to put files when -copylocal is used
+write-host "Sourcedir: $Sourcedir"
+$NonWildPath = $path.substring(0,$path.length-2)
+$CompleteDir = "$nonwildpath\complete" #Where to put encoded files, and original file
+$MultiDir = "$nonwildpath\multi" #where to put files with multiple audio tracks
+$BadDir = "$nonwildpath\bad" #where to put files deemed bad (Old codec, very low bitrate)
+$ErrorDir = "$nonwildpath\error" #where to put files that something bad happened
+$UnknownDir = "$nonwildpath\unknown" #Where to put unknown files
+$copylocalDir = "$nonwildpath\copylocal" # where to put files when -copylocal is used
 
 ###Clear Variables used throughout Script
 $Modifier = ""
@@ -303,8 +327,7 @@ $bittmp = ""
 $bit = ""
 $ffmpegcommand = ""
 
-# Get list of files in $SourceDir
-$files = get-ChildItem $SourceDir | Sort-Object name
+
 
 ###########
 #FUNCTIONS#
@@ -320,21 +343,25 @@ function movefiles ($LastExitCode)
 		    CreateWorkingdir
 		    Move-Item "$filename" "$CompleteDir\$basename$extension-orig"
             echo "moved: $filename to $CompleteDir\$basename$extension-orig"
-		    Move-Item "$SourceDir\$basename$modifier.mp4" "$CompleteDir\$basename.mp4"
-            echo "moved: $SourceDir\$basename$modifier.mp4 to $CompleteDir\$basename.mp4"
+		    Move-Item "$NonWildPath\$basename$modifier.mp4" "$CompleteDir\$basename.mp4"
+            echo "moved: $NonWildPath\$basename$modifier.mp4 to $CompleteDir\$basename.mp4"
+            #Move NFO
+            if (test-path "$basename.nfo"){Move-Item "$basename.nfo" "$CompleteDir"} 
+            #Move JPG
+            if (test-path "$basename.jpg") {Move-Item "$basename.jpg" "$CompleteDir"}
 		}
 		else
 		{
 		  	CreateWorkingDir
 	       	Move-Item "$filename" "$CompleteDir"
-		   	Move-Item "$SourceDir\$basename.mp4" "$CompleteDir"
+		   	Move-Item "$NonWildPath\$basename.mp4" "$CompleteDir"
 		}
     }
     else
     {
     	CreateWorkingDir
     	Move-Item $filename $ErrorDir
-    	Move-Item $SourceDir\$basename$modifier.mp4 $ErrorDir
+    	Move-Item $NonWildPath\$basename$modifier.mp4 $ErrorDir
 	} 
 }
 #Test/Create working directories function
@@ -455,8 +482,27 @@ Function Subextract ($fullpathfile, $videoname, $containertype, $destpath) {
      }
   }
 }    
-        
 
+#get the next video file
+Function getnextfile {
+    $files = get-ChildItem -File $SourceDir -Include $GoodExtensions | Sort-Object Creationtime
+    foreach ($file in $files) {
+        write-host "$(get-date) - Processing $file" 
+        #check if lockfile
+        $lockfile = $file.basename + "*.lock"
+        #write-host "potential lockfile: $lockfile"
+	    if (test-path $lockfile)
+	    {
+         write-host "$(get-date) - Lockfile Found skipping"
+         Continue
+        }
+        else {
+            write-host "$(get-date) - No Lockfile found, continuing"
+            break
+        }
+    } 
+    return ($file) 
+}        
 
 ###############
 #END FUNCTIONS#
@@ -502,18 +548,31 @@ else {
 ###################
 #Start Main Script#
 ###################
-foreach ($file in $files) {
+#Test if there are files in the folder
+
+$file = getnextfile
+
+
+if ($file.length -eq 0) {
+    write-host "No Files found to process, exiting"
+    exit 
+}else {
+    $morefiles = "yes" 
+}
+
+
+While ($morefiles -eq "yes"){
+
     write-host " " 
-    write-host "$(get-date) - Processing $filename"
+    write-host "$(get-date) - Processing $file.FullName"
 
     $hname = hostname
-	$filename = "$SourceDir\$file"
+    $filename = $file.FullName
 	$basenameliteral = $file.BaseName
     $lockfileliteral = "$Basenameliteral.$hname.lock"
     $basename = [Management.Automation.WildcardPattern]::Escape($basenameliteral)    #escape the filename to take care of square brackets
     $lockfile = [Management.Automation.WildcardPattern]::Escape($lockfileliteral)    #escape the filename to take care of square brackets
 	$extension = $file.Extension
-
     $filename = [Management.Automation.WildcardPattern]::Escape($filename)    #escape the filename to take care of square brackets
 	#[Regex]::Escape($String2)
     #Check if extension is a known one
@@ -542,6 +601,8 @@ foreach ($file in $files) {
 		Continue
 	}
 	
+    #Check if extension is a known one
+ 
     #Check if file is Subtitle.
 	if ($SubtitlesExtensions -contains "$extension")
 	{
@@ -552,7 +613,7 @@ foreach ($file in $files) {
 	}
 
 	#Check if file is of supported container type.
-	if (!($GoodExtensions -contains "$extension"))
+	if (!($GoodExtensions -contains "*"+"$extension"))
 	{
         echo "$(get-date) Unknown Extension: $extension"
 		CreateWorkingDir
@@ -571,15 +632,16 @@ foreach ($file in $files) {
     # Lock file down for further processing
 
     echo "Lockfile: $lockfileliteral"
-    New-Item -Path $SourceDir -Name $lockfileliteral -type file -force	| Out-Null
+    New-Item -Path $NonWildPath -Name $lockfileliteral -type file -force	| Out-Null
 
 	#Check if .mp4 file already exists
-	if (Test-Path "$SourceDir\$Basename.mp4") { $modifier="-transcode" }
+	if (Test-Path "$NonWildPath\$Basename.mp4") { $modifier="-transcode" }
 	else { $modifier="" }
 
 #    echo "Mediainfo path: $mediainfo"
 	#Get Mediainfo
-	$MediainfoOutput = &$mediainfo --Output="file://$mediainfotemplate" "$filename" 2>&1
+$MediainfoOutput = & $mediainfo --Output="file://$mediainfotemplate" "$filename" 2>&1
+
 #	echo "Mediainfotemplate: $mediainfotemplate"
 #	echo "Mediainfooutput: $MediainfoOutput"
 
@@ -593,6 +655,7 @@ foreach ($file in $files) {
    	 }
   	}	
   #$MediainfoArray
+  
 
   #Example of the hashtable produced by the MediaInfoTemplate
 #Name                           Value                                                                                                                                                                                                
@@ -639,7 +702,7 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
 	  	#Check/Make working folders
 	  	CreateWorkingDir
 	  	Move-Item $filename $MultiDir
-        Remove-Item -path $(Join-Path $SourceDir $lockfile)
+        Remove-Item -path $(Join-Path $NonWildPath $lockfile)
 		Continue
 	}
 #Testing source video codec
@@ -676,7 +739,7 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
         echo "$(get-date) - $filename will be moved to $BadDir and the next video will be processed"
 		CreateWorkingDir
 		Move-Item $filename $BadDir
-        Remove-Item -path $(Join-Path $SourceDir $lockfile)
+        Remove-Item -path $(Join-Path $NonWildPath $lockfile)
 		Continue   # end this for loop
 	}`
 	else #Didnt recognize the video codec
@@ -689,7 +752,7 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
         write-host $tmp
         $tmp | out-file -literalpath "$UnknownDir\$Basenameliteral.error.log" -append
 		Move-Item $filename $UnknownDir
-        Remove-Item -path $(Join-Path $SourceDir $lockfile)
+        Remove-Item -path $(Join-Path $NonWildPath $lockfile)
 		Continue
 	}
 
@@ -786,7 +849,7 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
     out-file $tmp -literalpath "$UnknownDir\$Basenameliteral.error.log" -append
     CreateWorkingdir
     Move-Item $filename $UnknownDir
-    Remove-Item "$SourceDir\$Basename.$hname.lock"
+    Remove-Item "$NonWildPath\$Basename.$hname.lock"
     Continue
 }
  elseif ( [int]$MediainfoArray["VWidth"] -ge 5761) {
@@ -798,7 +861,7 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
     out-file $tmp -literalpath "$UnknownDir\$Basenameliteral.error.log" -append
     CreateWorkingdir
     Move-Item $filename $UnknownDir
-    Remove-Item "$SourceDir\$Basename.$hname.lock"
+    Remove-Item "$NonWildPath\$Basename.$hname.lock"
     Continue
 }
 
@@ -856,13 +919,13 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
         $tmp | out-file -literalpath "$UnknownDir\$Basenameliteral.error.log" -append
 		CreateWorkingDir
 		Move-Item $filename $UnknownDir
-        Remove-Item -path $(Join-Path $SourceDir $lockfile)
+        Remove-Item -path $(Join-Path $NonWildPath $lockfile)
 		Continue
 	}
 	# All done finding options
 
 #Subtitle extractor
-    Subextract "$sourceDir\$Basename$extension" "$basename" "$extension" "$CompleteDir"
+    Subextract "$NonWildPath\$Basename$extension" "$basename" "$extension" "$CompleteDir"
 
 
     echo "$(get-date) - ================="
@@ -870,7 +933,7 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
     echo "$(get-date) - ================="
 	echo "$(get-date) - Final Video options $videooptspass1  Audio Options $audioopts"
         if ($passes -eq 1) { 
-        	$ffmpegcommand = "-i `"$filename`" $videoopts1st $audioopts `"$SourceDir\$basename$modifier.mp4`""
+        	$ffmpegcommand = "-i `"$filename`" $videoopts1st $audioopts `"$NonWildPath\$basename$modifier.mp4`""
 	        echo "$(get-date) - Starting Pass 1 of 1"	  
             echo "$(get-date) - FFMPEG Command: $ffmpeg $ffmpegcommand"
             Start-Process -FilePath "$ffmpeg" -ArgumentList "$ffmpegcommand" -Wait -PassThru
@@ -879,7 +942,7 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
             #PS C:\> $p.SetPriority(64)
 	        #echo "exit:" $LastExitCode
             movefiles($LastExitCode)
-            Remove-Item -path $(Join-Path $SourceDir $lockfile)
+            Remove-Item -path $(Join-Path $NonWildPath $lockfile)
          }
         elseif ($passes -eq 2) {
         	$ffmpegcommand = "-y -i `"$filename`" -pass 1 $videoopts1st $audioopts -f MP4 NUL"
@@ -894,13 +957,25 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
             }
             #PASS 2
 
-            $ffmpegcommand = "-i `"$filename`" -pass 2 $videoopts2nd $audioopts `"$SourceDir\$basename$modifier.mp4`""
+            $ffmpegcommand = "-i `"$filename`" -pass 2 $videoopts2nd $audioopts `"$NonWildPath\$basename$modifier.mp4`""
             echo "$(get-date) - Starting Pass 2 of 2"	
 	        echo "$(get-date) - FFMPEG Command: $ffmpeg $ffmpegcommand"
             Start-Process -FilePath "$ffmpeg" -ArgumentList "$ffmpegcommand" -Wait -PassThru
 
             movefiles($LastExitCode)
-            Remove-Item -path $(Join-Path $SourceDir $lockfile)
+            Remove-Item -path $(Join-Path $NonWildPath $lockfile)
         }
+
+    #choose next oldest file and restart while
+    $file = getnextfile
+
+
+    if ($file.length -eq 0) {
+    write-host "No Files found to process, exiting"
+        $morefiles = "no" 
+    }else {
+     $morefiles = "yes" 
+    }
+
 }
 
