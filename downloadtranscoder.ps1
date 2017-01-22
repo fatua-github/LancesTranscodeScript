@@ -489,8 +489,8 @@ Function getnextfile {
     foreach ($file in $files) {
         write-host "$(get-date) - Processing $file" 
         #check if lockfile
-        $lockfile = $file.basename + "*.lock"
-        #write-host "potential lockfile: $lockfile"
+        $lockfile = $NonWildPath+"\"+$file.basename + "*.lock"
+#        write-host "potential lockfile: $lockfile"
 	    if (test-path $lockfile)
 	    {
          write-host "$(get-date) - Lockfile Found skipping"
@@ -574,44 +574,8 @@ While ($morefiles -eq "yes"){
     $lockfile = [Management.Automation.WildcardPattern]::Escape($lockfileliteral)    #escape the filename to take care of square brackets
 	$extension = $file.Extension
     $filename = [Management.Automation.WildcardPattern]::Escape($filename)    #escape the filename to take care of square brackets
-	#[Regex]::Escape($String2)
-    #Check if extension is a known one
-    if (($GoodExtensions -notcontains $extension) -and ($SubtitlesExtensions -notcontains $extension)) {
-      echo "$(get-date) - $filename has unknown exension -- Skipping."
-      Continue
-    }
+
     
-
-	# as time passes from first creation of $files, first test if file still exists
-    if (!(Test-Path $filename))
-     { write-host "file doesnt exist anymore"
-        continue }
-
-    #check if lockfile
-	if ("$extension" -eq ".lock")
-	{
-        echo "$(get-date) Lockfile Found: $extension, skipping"
-        Continue
-    }
-
-    #Check if is a directory, if so skip
-    if (Test-Path $filename -PathType Container )
-	{
-		echo "$(get-date) $filename Is a directory, skipping"
-		Continue
-	}
-	
-    #Check if extension is a known one
- 
-    #Check if file is Subtitle.
-	if ($SubtitlesExtensions -contains "$extension")
-	{
-		echo "$(get-date) Subititle file: $filename"
-		CreateWorkingDir
-		Move-Item $filename $CompleteDir
-        Continue
-	}
-
 	#Check if file is of supported container type.
 	if (!($GoodExtensions -contains "*"+"$extension"))
 	{
@@ -621,13 +585,6 @@ While ($morefiles -eq "yes"){
         Continue
     }
 
-	echo "$(get-date) - Movie File found: $filename.   Checking for lock file"
-    if (Test-Path "$SourceDir\$Basename*.lock")
-    {
-#        echo "Found lockfile, skipping"
-        Continue
-    }
-    
 #    echo "File: $file Filename: $filename Basename: $basename Extension: $extension"
     # Lock file down for further processing
 
