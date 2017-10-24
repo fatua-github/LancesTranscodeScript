@@ -204,7 +204,7 @@ $mkvmergeexist = 0 #variable to determine if the tool exists
 $GoodExtensions = "*.divx","*.mov","*.mkv","*.avi","*.mp4","*.m4v","*.mpg","*.ogm","*.mpeg","*.vob","*.avs","*.m2ts","*.wmv"
 $SupportedVideoCodecs = "XVID","xvid","avc1","AVC","DX50","DIV3","DivX 4","V_MPEG4/ISO/AVC","MPEG Video","MPEG-4 Visual","Microsoft","VC-1","WMV3","High Efficiency Video Coding","HEVC","V_MPEGH/ISO/HEVC"
 $BadVideoCodecs = "DIV3","DivX 4"
-$SupportedAudioCodecs = "AAC","AC-3","MPEG Audio","WMA","DTS","PCM","WMA","Atmos / TrueHD","FLAC"   #Mediainfo Format
+$SupportedAudioCodecs = "AAC","AC-3","E-AC-3","MPEG Audio","WMA","DTS","PCM","WMA","Atmos / TrueHD","FLAC"   #Mediainfo Format
 $GoodAudio = "AAC"
 $SubtitlesExtensions = ".idx",".sub",".srt",".ass",".smi"
 
@@ -241,8 +241,8 @@ $ffmpegHEVC_720p1st = "-vcodec libx265 -preset fast -b:v 720k" # -x265-params `"
 $ffmpegHEVC_1080p2nd ="-vcodec libx265 -preset slow -b:v 1300k"  # -x265-params `"profile=high10`"   #.64 bits per pixel
 $ffmpegHEVC_1080p1st ="-vcodec libx265 -preset fast -b:v 1300k" #  -x265-params `"profile=high10`"   #.64 bits per pixel
 $ffmpegHEVC_480pcrf = "-vcodec libx265 -preset slow -x265-params crf=26" # -x265-params `"profile=high10`"
-$ffmpegHEVC_720pcrf = "-vcodec libx265 -preset medium -x265-params crf=25" # -x265-params `"profile=high10`"
-$ffmpegHEVC_1080pcrf ="-vcodec libx265 -preset medium -x265-params crf=24" #  -x265-params `"profile=high10`" 
+$ffmpegHEVC_720pcrf = "-vcodec libx265 -preset medium -x265-params crf=24" # -x265-params `"profile=high10`"
+$ffmpegHEVC_1080pcrf ="-vcodec libx265 -preset medium -x265-params crf=23" #  -x265-params `"profile=high10`" 
 
 $ffmpegacopy = "-acodec copy" 
 $ffmpeg2ch = "-acodec aac -ac 2 -ab 64k -strict -2"
@@ -562,12 +562,12 @@ if ($file.length -eq 0) {
 
 
 While ($morefiles -eq "yes"){
-
-    write-host " " 
-    write-host "$(get-date) - Processing $file.FullName"
-
     $hname = hostname
     $filename = $file.FullName
+
+    write-host " " 
+    write-host "$(get-date) - Processing $filename"
+
 	$basenameliteral = $file.BaseName
     $lockfileliteral = "$Basenameliteral.$hname.lock"
     $basename = [Management.Automation.WildcardPattern]::Escape($basenameliteral)    #escape the filename to take care of square brackets
