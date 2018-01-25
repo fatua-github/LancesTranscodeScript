@@ -73,11 +73,16 @@ May 19th, 2016 - Added HEVC reencode support
 May 25th, 2016 - fixed square bracket handling by escapting the filenames instead of using --LiteralPath
 June 4th, 2016 - Added creation of log files to "unknown" movements so user can see why the script rejected processing
 June 5th, 2016 - Moved Subtitle extractor to after video and audio checks, fixed lockfile and errorlog naming when square brackes are in file name, fixed source video codec array string
-<<<<<<< 0c306b45402baf27de2dfeb7f58f75c0485596e9
-=======
 Jan 12, 2017 - Copy *.nfo, *.jpg as well
 Jan 21st, 2017 - rewrote the order engine so that it encodes the oldest first and repulls folder listing after each encode
->>>>>>> 9386134e649e6cc51e6a6028a7faa147258a23df
+Jan 24th, 2018 - fixed "last file endless loop"   + added UHD video support
+
+Note:  
+8K 	7,680x4,320
+UHD 	3,840x2,160
+1080p 	1,920x1,080
+720p 	1,280x720 
+
 #>
 
 #Set Priority to Low
@@ -162,8 +167,12 @@ if ($reduce -ne $false) {
   echo "$(get-date) - $reduce reduction chosen" 
   $ffmpegreduce = "-vf scale=1920:-2"
  }
+ elseif ($reduce -eq "UHD") {
+  echo "$(get-date) - $reduce reduction chosen" 
+  $ffmpegreduce = "-vf scale=3840:-2"
+ }
  else{
-   echo "$(get-date) - $reduce not supported yet."
+   echo "$(get-date) - $reduce not supported yet. please use 480p, 720p, 1080p, or UHD"
    $switcherror = 1
  }
 }
@@ -178,8 +187,8 @@ if ($switcherror -eq 1)  {
  echo "$(get-date) - There are errors in your switches" 
  echo "$(get-date) - Please use the following format:   downloadtranscoder.ps1 -path <path to source files> -codec [AVC|HEVC] (-reduce [480p|720p|1080p]) (-copylocal)"
  echo "$(get-date) -    -path <path to source files>  for example -path c:\filestoencode"
- echo "$(get-date) -    -codec [AVC|HEVC] -- optional with AVC as default -- choose your encoder"
- echo "$(get-date) -    -reduce [480p|720p|1080p]  -- optional switch to reduce if needed to the chosen size"
+ echo "$(get-date) -    -codec [AVC|HEVC] -- optional with AVC as default -- choose your encoder."
+ echo "$(get-date) -    -reduce [480p|720p|1080p|UHD]  -- optional switch to reduce if needed to the chosen size"
  exit
 }
 
@@ -213,11 +222,13 @@ if ($codec -eq "AVC") {  #Mediainfo outputs Kbytes*1000 as bytes, not 1024
   $480pVBitRateMax = 899*1000  
   $720pVBitRateMax = 1700*1000
   $1080pVBitRateMax = 2200*1000
+  $UHDVBitRateMax = 8000*1000
 }
 elseif ($codec -eq "HEVC") {
   $480pVBitRateMax = 500*1000
   $720pVBitRateMax = 1000*1000
   $1080pVBitRateMax = 1700*1000 
+  $UHDVBitRateMax = 4000*1000
 }
 
 #Hardcode Audio codec to AAC, will update later with webm/VP9/OGG
@@ -234,15 +245,23 @@ $ffmpeg720p2nd = "-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 15
 $ffmpeg720p1st = "-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 1503k" # unchanged numbers from 2012
 $ffmpeg1080p2nd ="-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 2200k" # unchanged numbers from 2012
 $ffmpeg1080p1st ="-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 2200k" # unchanged numbers from 2012
+$ffmpegUHD2nd ="-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 7000k" # unchanged numbers from 2012
+$ffmpegUHD1st ="-vcodec libx264 -profile:v high -level 41 -preset slow -b:v 7000k" # unchanged numbers from 2012
+
 $ffmpegHEVC_480p2nd = "-vcodec libx265 -preset slow -b:v 303k" # -x265-params `"profile=high10`" # .9 bits per pixel
 $ffmpegHEVC_480p1st = "-vcodec libx265 -preset fast -b:v 303k" # -x265-params `"profile=high10`" # .9 bits per pixel
 $ffmpegHEVC_720p2nd = "-vcodec libx265 -preset slow -b:v 720k" # -x265-params `"profile=high10`"    #.8 bits per pixel
 $ffmpegHEVC_720p1st = "-vcodec libx265 -preset fast -b:v 720k" # -x265-params `"profile=high10`"   #.8 bits per pixel
 $ffmpegHEVC_1080p2nd ="-vcodec libx265 -preset slow -b:v 1300k"  # -x265-params `"profile=high10`"   #.64 bits per pixel
 $ffmpegHEVC_1080p1st ="-vcodec libx265 -preset fast -b:v 1300k" #  -x265-params `"profile=high10`"   #.64 bits per pixel
+$ffmpegHEVC_UHD2nd ="-vcodec libx265 -preset slow -b:v 3500k"  # -x265-params `"profile=high10`"   #.64 bits per pixel
+$ffmpegHEVC_UHD1st ="-vcodec libx265 -preset fast -b:v 3500k" #  -x265-params `"profile=high10`"   #.64 bits per pixel
+
 $ffmpegHEVC_480pcrf = "-vcodec libx265 -preset slow -x265-params crf=26" # -x265-params `"profile=high10`"
 $ffmpegHEVC_720pcrf = "-vcodec libx265 -preset medium -x265-params crf=24" # -x265-params `"profile=high10`"
 $ffmpegHEVC_1080pcrf ="-vcodec libx265 -preset medium -x265-params crf=23" #  -x265-params `"profile=high10`" 
+$ffmpegHEVC_UHDcrf ="-vcodec libx265 -preset medium -x265-params crf=21" #  -x265-params `"profile=high10`" 
+
 
 $ffmpegacopy = "-acodec copy" 
 $ffmpeg2ch = "-acodec aac -ac 2 -ab 64k -strict -2"
@@ -261,6 +280,9 @@ if ( $encoder -eq "ffmpeg" -and $codec -eq "AVC"){
 	$1080p1st = $ffmpeg1080p1st
 	$1080p2nd = $ffmpeg1080p2nd
     $1080ppasses = 2
+	$UHD1st = $ffmpegUHD1st
+	$UHD2nd = $ffmpegUHD2nd
+    $UHDpasses = 2
 	$acopy = $ffmpegacopy
 	$2ch = $ffmpeg2ch
 	$6ch = $ffmpeg6ch
@@ -279,6 +301,9 @@ elseif ( $encoder -eq "ffmpeg" -and $codec -eq "HEVC" -and $crf -eq $false){
 	$1080p1st = $ffmpegHEVC_1080p1st
 	$1080p2nd = $ffmpegHEVC_1080p2nd
     $1080ppasses = 2
+	$UHD1st = $ffmpegHEVC_UHD1st
+	$UHD2nd = $ffmpegHEVC_UHD2nd
+    $UHDpasses = 2
 	$acopy = $ffmpegacopy
 	$2ch = $ffmpeg2ch
 	$6ch = $ffmpeg6ch
@@ -294,6 +319,8 @@ elseif ( $encoder -eq "ffmpeg" -and $codec -eq "HEVC" -and $crf -eq $true){
     $720ppasses = 1
 	$1080p1st = $ffmpegHEVC_1080pcrf
     $1080ppasses = 1
+	$UHD1st = $ffmpegHEVC_1080pcrf
+    $UHDpasses = 1
 	$acopy = $ffmpegacopy
 	$2ch = $ffmpeg2ch
 	$6ch = $ffmpeg6ch
@@ -486,6 +513,13 @@ Function Subextract ($fullpathfile, $videoname, $containertype, $destpath) {
 #get the next video file
 Function getnextfile {
     $files = get-ChildItem -File $SourceDir -Include $GoodExtensions | Sort-Object Creationtime
+    write-host FILES found
+    write-host $files 
+    write-host END FILES found
+    Write-host name variable has $file value
+    $file = $null 
+    Write-host name variable has $file value
+    
     foreach ($file in $files) {
         write-host "$(get-date) - Processing $file" 
         #check if lockfile
@@ -500,7 +534,8 @@ Function getnextfile {
             write-host "$(get-date) - No Lockfile found, continuing"
             break
         }
-    } 
+    }
+    Write-host name variable has $file value 
     return ($file) 
 }        
 
@@ -550,18 +585,22 @@ else {
 ###################
 #Test if there are files in the folder
 
-$file = getnextfile
 
 
-if ($file.length -eq 0) {
-    write-host "No Files found to process, exiting"
-    exit 
-}else {
-    $morefiles = "yes" 
-}
+#While ($morefiles -eq "yes"){
+while (1 -eq 1) {  #infinite loop until break
+    write-host getnextfile....
+    $file = getnextfile
+    write-host file-value is $file
 
+    if ($file.length -eq 0) {
+        write-host "No Files found to process, exiting"
+        break
+    }
+   # else {
+        #$morefiles = "yes"
+   # }
 
-While ($morefiles -eq "yes"){
     $hname = hostname
     $filename = $file.FullName
 
@@ -582,7 +621,8 @@ While ($morefiles -eq "yes"){
         echo "$(get-date) Unknown Extension: $extension"
 		CreateWorkingDir
 		Move-Item $filename $UnknownDir
-        Continue
+       # Continue
+        break
     }
 
 #    echo "File: $file Filename: $filename Basename: $basename Extension: $extension"
@@ -657,10 +697,11 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
 	if ( $MediainfoArray["AudioCount"] -ge 2 )
 	{ #Manual handling Required
 	  	#Check/Make working folders
+        write-host  "$(get-date) - Found $($MediainfoArray["AudioCount"]) audio tracks in this video.  It needs to be handled manually and will be moved to the multi folder"
 	  	CreateWorkingDir
 	  	Move-Item $filename $MultiDir
         Remove-Item -path $(Join-Path $NonWildPath $lockfile)
-		Continue
+		Break
 	}
 #Testing source video codec
 	if ($SupportedVideoCodecs -contains $MediainfoArray['VFormat']) 
@@ -697,7 +738,8 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
 		CreateWorkingDir
 		Move-Item $filename $BadDir
         Remove-Item -path $(Join-Path $NonWildPath $lockfile)
-		Continue   # end this for loop
+		#Continue   # end this for loop
+        break
 	}`
 	else #Didnt recognize the video codec
 	{
@@ -710,7 +752,8 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
         $tmp | out-file -literalpath "$UnknownDir\$Basenameliteral.error.log" -append
 		Move-Item $filename $UnknownDir
         Remove-Item -path $(Join-Path $NonWildPath $lockfile)
-		Continue
+		#Continue
+        break
 	}
 
 
@@ -798,16 +841,37 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
     }    
 }
  elseif ( [int]$MediainfoArray["VWidth"] -in 2881..5760) {
-    $tmp = "$(get-date) - Video has a width of $($MediainfoArray.VWidth) and is considered 4k UHD"
-    write-host $tmp 
-    out-file $tmp -literalpath "$UnknownDir\$Basenameliteral.error.log" -append 
-    $tmp = "$(get-date) - This script is unable to handle 4K UHD video yet, moving $filename to $UnknownDir"
-    write-host $tmp
-    out-file $tmp -literalpath "$UnknownDir\$Basenameliteral.error.log" -append
-    CreateWorkingdir
-    Move-Item $filename $UnknownDir
-    Remove-Item "$NonWildPath\$Basename.$hname.lock"
-    Continue
+    echo "$(get-date) - Entering UHD desitnation processing."
+       
+    if (($reduce -eq "UHD") -and ([int]$MediainfoArray.VWidth -ge 2880)) {  # If reduce was specified and source video is larger than this section.. 
+        write-host "$(get-date) - Video resolution is larger than 1080p Maximum (2880) ($($MediainfoArray.VWidth)), and -reduce specified, will transcode and scale the video"
+        $videoopts1st = "$UHD1st $ffmpegreduce"
+        $videoopts2nd = "$UHD2nd $ffmpegreduce"
+        $passes = $UHDpasses
+    }
+    else {
+        if (($codec -eq $MediainfoArray.VFormat) -and (([int]$MediainfoArray.VBitRate) -le $UHDVBitRateMax)) { 
+           write-host "$(get-date) - Source Bitrate ($($MediainfoArray.vBitrate)) is less than the maximum ($UHDVBitRateMax) and the source ($($MediainfoArray.VFormat)) and desination ($codec) codecs are equal -- Video to be copied"
+           $videoopts1st = $vcopy
+           $passes = $vcopypasses
+        }
+        else{
+           write-host "$(get-date) - Source Bitrate ($($MediainfoArray.vBitrate)) is greater than the maximum ($UHDVBitRateMax) or the source ($($MediainfoArray.VFormat)) and desination ($codec) codecs do not match -- Will Transcode"
+           $videoopts1st = $UHD1st
+           $videoopts2nd = $UHD2nd
+           $passes = $UHDpasses
+        }
+    }    
+#    $tmp = "$(get-date) - Video has a width of $($MediainfoArray.VWidth) and is considered 4k UHD"
+#    write-host $tmp 
+#    out-file $tmp -literalpath "$UnknownDir\$Basenameliteral.error.log" -append 
+#    $tmp = "$(get-date) - This script is unable to handle 4K UHD video yet, moving $filename to $UnknownDir"
+#    write-host $tmp
+#    out-file $tmp -literalpath "$UnknownDir\$Basenameliteral.error.log" -append
+#    CreateWorkingdir
+#    Move-Item $filename $UnknownDir
+#    Remove-Item "$NonWildPath\$Basename.$hname.lock"
+#    Continue
 }
  elseif ( [int]$MediainfoArray["VWidth"] -ge 5761) {
     $tmp = "$(get-date) - Video has a width of $($MediainfoArray.VWidth) and is considered 8k UHD"
@@ -819,7 +883,8 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
     CreateWorkingdir
     Move-Item $filename $UnknownDir
     Remove-Item "$NonWildPath\$Basename.$hname.lock"
-    Continue
+    #Continue
+    break
 }
 
 
@@ -877,7 +942,8 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
 		CreateWorkingDir
 		Move-Item $filename $UnknownDir
         Remove-Item -path $(Join-Path $NonWildPath $lockfile)
-		Continue
+		#Continue
+        break
 	}
 	# All done finding options
 
@@ -910,7 +976,8 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
             {
                 echo "FFMPEG HAD ERROR $LastExitCode"
                 movefiles ($LastExitcode)
-                Continue
+                #Continue
+                break
             }
             #PASS 2
 
@@ -923,16 +990,18 @@ echo "$(get-date) - Current video Codec is $($MediainfoArray.VFormat)"
             Remove-Item -path $(Join-Path $NonWildPath $lockfile)
         }
 
-    #choose next oldest file and restart while
-    $file = getnextfile
-
-
-    if ($file.length -eq 0) {
-    write-host "No Files found to process, exiting"
-        $morefiles = "no" 
-    }else {
-     $morefiles = "yes" 
-    }
+ #   write-host another round...
+ #   #choose next oldest file and restart while
+ #   $file = getnextfile
+ #   write-host end-file-get $file
+#
+#    if ($file.length -eq 0) {
+#    write-host "No Files found to process, exiting"
+#        $morefiles = "no" 
+#    }else {
+#     $morefiles = "yes" 
+#    }
 
 }
 
+Write-host FIN
